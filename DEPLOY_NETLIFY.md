@@ -1,9 +1,6 @@
 # Deploy no Netlify
 
-Este projeto é um site estático (HTML/CSS/JS). A exportação de DOCX funciona de duas formas:
-
-- Cliente (fallback): via biblioteca `docx` carregada por CDN (já configurada em `index.html`).
-- Servidor (Python): via endpoint `/export-docx` (Flask). Para usar no Netlify, é preciso apontar esse endpoint para um backend externo.
+Este projeto é um site estático (HTML/CSS/JS). A exportação de DOCX funciona diretamente no navegador via biblioteca `docx` carregada por CDN (já configurada em `index.html`). Não há backend necessário.
 
 ## Opção A — Deploy rápido (Drag & Drop)
 
@@ -12,7 +9,7 @@ Este projeto é um site estático (HTML/CSS/JS). A exportação de DOCX funciona
 3. Arraste e solte a pasta do projeto (`Homolog`) contendo `index.html`, `app.js`, `styles.css`, `assets/`.
 4. Ao publicar, a URL do site será gerada automaticamente.
 
-Observação: nessa opção, o botão "Exportar DOCX" usará primeiro o endpoint `/export-docx`. Como o Netlify não possui backend Python, a chamada retornará 404 e o fallback do cliente (CDN `docx`) assumirá automaticamente.
+Observação: o botão "Exportar DOCX" gera o arquivo inteiramente no navegador (CDN `docx`).
 
 ## Opção B — Deploy com CLI
 
@@ -25,22 +22,9 @@ Observação: nessa opção, o botão "Exportar DOCX" usará primeiro o endpoint
 
 O site estará disponível em uma URL como `https://seu-site.netlify.app/`.
 
-## Usando backend Python externo
+## (Opcional) Backend externo
 
-Se quiser manter a exportação via Python (Flask), hospede o backend em um serviço externo (Railway, Render, Fly.io, etc.) e configure o `netlify.toml` para redirecionar:
-
-```toml
-[build]
-  publish = "."
-
-[[redirects]]
-  from = "/export-docx"
-  to = "https://SEU-BACKEND/export-docx"
-  status = 200
-  force = true
-```
-
-Assim, o `fetch('/export-docx')` será proxy pela mesma origem do Netlify, evitando CORS e garantindo que o DOCX seja gerado no servidor.
+Se desejar, você pode integrar um backend externo futuramente, mas o projeto atual não depende disso.
 
 ## Testes após o deploy
 
@@ -57,4 +41,3 @@ Assim, o `fetch('/export-docx')` será proxy pela mesma origem do Netlify, evita
 
 - Se decidir usar apenas o fallback, nenhum backend é necessário para Netlify.
 - Se for usar backend externo, mantenha `CORS` habilitado no Flask (já presente) — com o redirect do Netlify, CORS não será necessário, pois a chamada será mesma origem.
-

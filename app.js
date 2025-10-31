@@ -5,6 +5,8 @@ const els = {
   exportHtml: document.getElementById('exportHtmlBtn'),
   toggleExpand: document.getElementById('toggleExpandBtn'),
   copyMd: document.getElementById('copyMdBtn'),
+  downloadMd: document.getElementById('downloadMdBtn'),
+  downloadHtml: document.getElementById('downloadHtmlBtn'),
   clear: document.getElementById('clearStepsBtn'),
   video: document.getElementById('screenVideo'),
   videoWrapper: document.getElementById('videoWrapper'),
@@ -251,35 +253,18 @@ function renderSteps() {
 }
 
 async function exportDocx() {
+  // Exportação totalmente no cliente usando a biblioteca docx (CDN)
+  const docxLib = window.docx || (typeof docx !== 'undefined' ? docx : null);
+  if (!docxLib) {
+    console.error('Biblioteca docx não está carregada.');
+    showToast('Biblioteca DOCX ausente');
+    return;
+  }
   try {
-    const base = window.location.origin || 'http://127.0.0.1:8000';
-    const resp = await fetch(`${base}/export-docx`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ steps }),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'homolog_export.docx';
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('Exportado como DOCX (Python)');
-  } catch (err) {
-    console.error('Falha exportar DOCX via Python:', err);
-    // Fallback para exportação no cliente se biblioteca docx estiver disponível
-    const docxLib = window.docx || (typeof docx !== 'undefined' ? docx : null);
-    if (docxLib) {
-      try {
-        await clientExportDocxFallback(docxLib);
-        showToast('Exportado como DOCX (fallback)');
-        return;
-      } catch (e) {
-        console.error('Falha no fallback DOCX:', e);
-      }
-    }
+    await clientExportDocxFallback(docxLib);
+    showToast('Exportado como DOCX (navegador)');
+  } catch (e) {
+    console.error('Falha ao exportar DOCX no cliente:', e);
     showToast('Falha na exportação DOCX');
   }
 }
@@ -317,6 +302,50 @@ function copyMarkdown() {
   navigator.clipboard.writeText(md).then(() => {
     showToast('Markdown copiado');
   }).catch(() => showToast('Falha ao copiar Markdown'));
+}
+
+function downloadMarkdown() {
+  if (!steps.length) { showToast('Nenhum passo para exportar'); return; }
+  const md = steps.map((s, i) => (
+    `### ${i + 1}. ${s.title || 'Passo'}\n\n${s.description ? s.description + '\n\n' : ''}![](${s.imageDataUrl})\n`
+  )).join('\n');
+  const blob = new Blob([md], { type: 'text/markdown;charset=UTF-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'homolog_export.md'; a.click();
+  URL.revokeObjectURL(url);
+  showToast('Markdown baixado');
+}
+
+function downloadHtml() {
+  if (!steps.length) { showToast('Nenhum passo para exportar'); return; }
+  const head = `<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Guia Homolog</title><style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;padding:24px;line-height:1.5;color:#0f172a;background:#fff}h1{font-size:24px;margin:0 0 16px}h2{font-size:18px;margin:24px 0 8px}p{margin:6px 0}img{max-width:100%;height:auto;border:1px solid #e5e7eb;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin:8px 0}nav.toc{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin:12px 0}nav.toc h2{font-size:16px;margin:0 0 8px}nav.toc ol{margin:0;padding-left:18px}nav.toc li{margin:4px 0}</style></head><body>`;
+  let body = `<h1>Guia Homolog</h1>`;
+
+  // Sumário com âncoras para cada passo
+  let toc = `<nav class="toc"><h2>Sumário</h2><ol>`;
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    const title = escapeHtml(s.title || 'Passo');
+    toc += `<li><a href="#step-${i + 1}">${i + 1}. ${title}</a></li>`;
+  }
+  toc += `</ol></nav>`;
+  body += toc;
+
+  // Conteúdo dos passos com ids para âncoras
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    const title = escapeHtml(s.title || 'Passo');
+    body += `<h2 id="step-${i + 1}">${i + 1}. ${title}</h2>`;
+    if (s.tag) body += `<p><strong>Tag:</strong> ${escapeHtml(s.tag)}</p>`;
+    if (s.description) body += `<p>${escapeHtml(s.description)}</p>`;
+    if (s.imageDataUrl) body += `<img src="${s.imageDataUrl}" alt="${title}">`;
+  }
+  const html = head + body + `</body></html>`;
+  const blob = new Blob([html], { type: 'text/html;charset=UTF-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = 'homolog_export.html'; a.click();
+  URL.revokeObjectURL(url);
+  showToast('HTML baixado');
 }
 
 function dataUrlToUint8Array(dataUrl) {
@@ -357,6 +386,8 @@ if (els.toggleExpand) {
   document.addEventListener('fullscreenchange', updateExpandButtonLabel);
 }
 els.copyMd.addEventListener('click', copyMarkdown);
+if (els.downloadMd) els.downloadMd.addEventListener('click', downloadMarkdown);
+if (els.downloadHtml) els.downloadHtml.addEventListener('click', downloadHtml);
 els.clear.addEventListener('click', () => {
   if (confirm('Tem certeza que deseja limpar todos os passos?')) {
     clearSteps();

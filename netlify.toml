@@ -1,13 +1,5 @@
 [# Netlify configuration]
 [build]
   publish = "."
-  # No build command needed for a static site
-
-# If you host the Flask backend elsewhere, uncomment and set the URL below
-# to proxy the DOCX export through Netlify (avoids CORS):
-# [[redirects]]
-#   from = "/export-docx"
-#   to = "https://YOUR-BACKEND-HOST/export-docx"
-#   status = 200
-#   force = true
+  # Projeto 100% estático; sem comando de build
 
