@@ -17,6 +17,7 @@ const els = {
   imageModal: document.getElementById('imageModal'),
   modalImage: document.getElementById('modalImage'),
   status: document.getElementById('statusText'),
+  headerMenuBtn: document.getElementById('headerMenuBtn'),
 };
 
 let mediaStream = null;
@@ -393,6 +394,39 @@ els.clear.addEventListener('click', () => {
     clearSteps();
   }
 });
+
+// Menu responsivo do header (tela pequena)
+if (els.headerMenuBtn) {
+  const actionsContainer = document.querySelector('.actions');
+  const btn = els.headerMenuBtn;
+  const toggle = (open) => {
+    const isOpen = typeof open === 'boolean' ? open : !actionsContainer.classList.contains('open');
+    if (isOpen) {
+      actionsContainer.classList.add('open');
+      btn.setAttribute('aria-expanded', 'true');
+    } else {
+      actionsContainer.classList.remove('open');
+      btn.setAttribute('aria-expanded', 'false');
+    }
+  };
+  btn.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
+
+  // fechar ao clicar fora
+  document.addEventListener('click', (e) => {
+    if (!actionsContainer) return;
+    if (!actionsContainer.classList.contains('open')) return;
+    const target = e.target;
+    if (target === btn || actionsContainer.contains(target)) return;
+    toggle(false);
+  });
+
+  // fechar ao redimensionar para desktop
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 680 && actionsContainer.classList.contains('open')) {
+      toggle(false);
+    }
+  });
+}
 els.video.addEventListener('click', (e) => {
   if (!mediaStream) {
     showToast('Inicie a captura para criar passos');

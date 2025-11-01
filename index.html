@@ -1,42 +1,59 @@
 <!doctype html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Homolog — Criador de Passos</title>
-    <link rel="icon" href="./assets/icon.svg" />
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <header class="app-header">
-      <div class="brand">
-        <img src="./assets/icon.svg" alt="Homolog" class="brand-icon" />
-        <h1>Homolog</h1>
-      </div>
-      <div class="actions">
-        <button id="startCaptureBtn" class="primary">Iniciar captura</button>
-        <button id="stopCaptureBtn" class="secondary">Parar captura</button>
-        <button id="addStepBtn" class="accent">Adicionar passo</button>
-        <button id="exportHtmlBtn" class="secondary">Exportar DOCX</button>
-        <button id="toggleExpandBtn" class="secondary">Expandir captura</button>
-        <button id="copyMdBtn" class="secondary">Copiar Markdown</button>
-        <button id="downloadMdBtn" class="secondary">Baixar Markdown</button>
-        <button id="downloadHtmlBtn" class="secondary">Baixar HTML</button>
-        <button id="clearStepsBtn" class="danger">Limpar passos</button>
-      </div>
-    </header>
 
-    <main class="layout">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Homolog — Criador de Passos</title>
+  <link rel="icon" href="./assets/icon.svg" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <img src="./assets/icon.svg" alt="Homolog" class="brand-icon" />
+      <h1>Homolog</h1>
+    </div>
+    <!-- Menu button para telas pequenas -->
+    <button id="headerMenuBtn" class="menu-btn" aria-expanded="false" aria-label="Abrir menu de ações">
+      <span class="bar"></span>
+      <span class="bar"></span>
+      <span class="bar"></span>
+    </button>
+
+    <div class="actions">
+      <button id="startCaptureBtn" class="primary">Iniciar captura</button>
+      <button id="stopCaptureBtn" class="secondary">Parar captura</button>
+      <button id="addStepBtn" class="accent">Adicionar passo</button>
+      <button id="exportHtmlBtn" class="secondary">Exportar DOCX</button>
+      <button id="toggleExpandBtn" class="secondary">Expandir captura</button>
+      <button id="copyMdBtn" class="secondary">Copiar Markdown</button>
+      <button id="downloadMdBtn" class="secondary">Baixar Markdown</button>
+      <button id="downloadHtmlBtn" class="secondary">Baixar HTML</button>
+      <button id="clearStepsBtn" class="danger">Limpar passos</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <div class="left">
       <section class="capture">
+        <div class="hero">
+          <h2>Criador de Passos</h2>
+          <p class="hero-sub">Capture ações da tela e transforme em documentação passo-a-passo.</p>
+        </div>
         <div id="videoWrapper" class="video-wrapper">
           <video id="screenVideo" autoplay muted playsinline></video>
           <div id="videoOverlay" class="overlay hidden">Captura em andamento…</div>
         </div>
         <p class="hint">
-          Dica: após iniciar, clique sobre o vídeo para criar um passo com realce no ponteiro (ou use "Adicionar passo").
+          Dica: após iniciar, clique sobre o vídeo para criar um passo com realce no ponteiro (ou use "Adicionar
+          passo").
         </p>
       </section>
+    </div>
 
+    <aside class="sidebar">
       <section class="steps">
         <h2>Passos</h2>
         <div id="stepsList" class="steps-list"></div>
@@ -46,18 +63,20 @@
         <h2>Logs de cliques</h2>
         <div id="logsList" class="log-list"></div>
       </section>
-    </main>
+    </aside>
+  </main>
 
-    <footer class="app-footer">
-      <span>Homolog — MVP inspirado no Scribe</span>
-      <span id="statusText">Pronto</span>
-    </footer>
+  <footer class="app-footer">
+    <span>Homolog — MVP inspirado no Scribe</span>
+    <span id="statusText">Pronto</span>
+  </footer>
 
-    <div id="toast" class="toast hidden"></div>
-    <div id="imageModal" class="modal hidden"><img id="modalImage" alt="Screenshot" /></div>
+  <div id="toast" class="toast hidden"></div>
+  <div id="imageModal" class="modal hidden"><img id="modalImage" alt="Screenshot" /></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/docx@8.3.0/build/index.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js" defer></script>
-    <script type="module" src="./app.js"></script>
-  </body>
+  <script src="https://cdn.jsdelivr.net/npm/docx@8.3.0/build/index.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js" defer></script>
+  <script type="module" src="./app.js"></script>
+</body>
+
 </html>
