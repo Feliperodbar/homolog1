@@ -206,6 +206,21 @@ textarea { min-height: 68px; resize: vertical; }
   .actions button { width: 100%; text-align: left; }
 }
 
+/* Ícones dentro dos botões do header */
+.actions button .btn-icon { width: 16px; height: 16px; display: inline-block; vertical-align: middle; margin-right: 8px; fill: currentColor; }
+.actions button span { vertical-align: middle; }
+
+/* Transição suave para o menu em mobile */
+@media (max-width: 680px) {
+  .actions { opacity: 0; transform: translateY(-6px); transition: opacity .18s ease, transform .18s ease; }
+  .actions.open { opacity: 1; transform: translateY(0); }
+  .menu-btn { transition: transform .18s ease; }
+  .menu-btn.open { transform: rotate(90deg); }
+  .menu-btn.open .bar:nth-child(1) { transform: translateY(6px) rotate(45deg); }
+  .menu-btn.open .bar:nth-child(2) { opacity: 0; }
+  .menu-btn.open .bar:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
+}
+
 /* Fechar o menu se necessário quando a largura aumentar */
 @media (min-width: 681px) {
   .actions { position: static !important; display: flex !important; flex-direction: row !important; gap: 8px !important; width: auto !important; box-shadow: none !important; }

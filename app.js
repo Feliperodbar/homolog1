@@ -254,11 +254,33 @@ function renderSteps() {
 }
 
 async function exportDocx() {
-  // Exportação totalmente no cliente usando a biblioteca docx (CDN)
+  // Tenta exportar via servidor primeiro (POST /export-docx). Se falhar, usa a exportação no cliente.
+  if (!steps || !steps.length) { showToast('Nenhum passo para exportar'); return; }
+  try {
+    const resp = await fetch('/export-docx', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ steps })
+    });
+    if (resp.ok) {
+      const blob = await resp.blob();
+      const filename = (resp.headers.get('Content-Disposition') || '').split('filename=')[1] || 'homolog_export.docx';
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = filename.replace(/"/g, ''); a.click();
+      URL.revokeObjectURL(url);
+      showToast('Exportado como DOCX (servidor)');
+      return;
+    }
+    // se status não ok, cai para fallback
+    console.warn('Export via servidor retornou status', resp.status);
+  } catch (e) {
+    console.warn('Falha ao exportar via servidor, tentando exportar no cliente:', e);
+  }
+
+  // Fallback: exportar no cliente usando docx CDN
   const docxLib = window.docx || (typeof docx !== 'undefined' ? docx : null);
   if (!docxLib) {
-    console.error('Biblioteca docx não está carregada.');
-    showToast('Biblioteca DOCX ausente');
+    console.error('Biblioteca docx não está carregada para fallback.');
+    showToast('Exportação indisponível (docx ausente)');
     return;
   }
   try {
@@ -404,9 +426,11 @@ if (els.headerMenuBtn) {
     if (isOpen) {
       actionsContainer.classList.add('open');
       btn.setAttribute('aria-expanded', 'true');
+      btn.classList.add('open');
     } else {
       actionsContainer.classList.remove('open');
       btn.setAttribute('aria-expanded', 'false');
+      btn.classList.remove('open');
     }
   };
   btn.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
