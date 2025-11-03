@@ -3,6 +3,7 @@ const els = {
   stop: document.getElementById('stopCaptureBtn'),
   add: document.getElementById('addStepBtn'),
   toggleExpand: document.getElementById('toggleExpandBtn'),
+  downloadHtml: document.getElementById('downloadHtmlBtn'),
   clear: document.getElementById('clearStepsBtn'),
   video: document.getElementById('screenVideo'),
   videoWrapper: document.getElementById('videoWrapper'),
@@ -269,10 +270,69 @@ function escapeHtml(str) {
     .replaceAll("'", '&#039;');
 }
 
+function downloadHtml() {
+  try {
+    const now = new Date();
+    const title = `Homolog — Captura ${now.toLocaleString()}`;
+    const stepsHtml = steps.map((s, i) => {
+      const t = escapeHtml(s.title || `Passo ${i+1}`);
+      const d = escapeHtml(s.description || '');
+      const tag = escapeHtml(s.tag || '');
+      const img = s.imageDataUrl || '';
+      return `<article style="border:1px solid #d1d5db;border-radius:8px;padding:10px;background:#fafafa;margin:10px 0;">
+        <header>
+          <h3 style="margin:0 0 6px;color:#111827;font-family:system-ui,Segoe UI,Roboto">${t}</h3>
+          ${tag ? `<p style="margin:0 0 8px;color:#374151;font-size:12px">Tag: ${tag}</p>` : ''}
+        </header>
+        ${img ? `<img src="${img}" alt="${t}" style="max-width:100%;border:1px solid #e5e7eb;border-radius:6px">` : ''}
+        ${d ? `<p style="margin:8px 0;color:#1f2937">${d}</p>` : ''}
+      </article>`;
+    }).join('');
+
+    const logsHtml = logs.length ? `<section>
+      <h2 style="font-family:system-ui,Segoe UI,Roboto;color:#111827">Logs</h2>
+      <ul style="padding-left:18px;color:#1f2937">${logs.map(l => `<li>${escapeHtml(l.message)} — ${escapeHtml(new Date(l.ts).toLocaleTimeString())}</li>`).join('')}</ul>
+    </section>` : '';
+
+    const doc = `<!doctype html><html lang="pt-BR"><head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <title>${escapeHtml(title)}</title>
+      <style>
+        body{font-family:ui-sans-serif,system-ui,Segoe UI,Roboto;background:#ffffff;color:#111827;margin:20px}
+        h1{font-size:20px;margin:0 0 12px}
+        .hint{color:#6b7280;font-size:12px;margin-bottom:12px}
+      </style>
+    </head><body>
+      <h1>${escapeHtml(title)}</h1>
+      <p class="hint">Arquivo gerado pelo Homolog — contém imagens incorporadas.</p>
+      <section>
+        <h2 style="font-family:system-ui,Segoe UI,Roboto;color:#111827">Passos</h2>
+        ${stepsHtml || '<p>Nenhum passo.</p>'}
+      </section>
+      ${logsHtml}
+    </body></html>`;
+
+    const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `homolog_${now.toISOString().slice(0,19).replace(/[:T]/g,'-')}.html`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+    showToast('HTML baixado');
+  } catch (e) {
+    console.warn('Falha ao baixar HTML:', e);
+    showToast('Não foi possível gerar o HTML');
+  }
+}
+
 // Eventos
 els.start.addEventListener('click', startCapture);
 els.stop.addEventListener('click', stopCapture);
 els.add.addEventListener('click', addStep);
+if (els.downloadHtml) { els.downloadHtml.addEventListener('click', downloadHtml); }
 // Removido: exportação DOCX
 if (els.toggleExpand) {
   els.toggleExpand.addEventListener('click', toggleFullscreenCapture);
