@@ -3,6 +3,7 @@ const els = {
   stop: document.getElementById('stopCaptureBtn'),
   add: document.getElementById('addStepBtn'),
   toggleExpand: document.getElementById('toggleExpandBtn'),
+  exportDocx: document.getElementById('exportDocxBtn'),
   downloadHtml: document.getElementById('downloadHtmlBtn'),
   clear: document.getElementById('clearStepsBtn'),
   video: document.getElementById('screenVideo'),
@@ -553,4 +554,145 @@ function sanitizeLabel(label) {
 function toTitleCase(s) {
   // Mantemos o texto como está; função deixada por compatibilidade
   return s;
+}
+
+function dataUrlToUint8Array(dataUrl) {
+  const parts = String(dataUrl).split(',');
+  if (parts.length < 2) return new Uint8Array();
+  const byteString = atob(parts[1]);
+  const len = byteString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = byteString.charCodeAt(i);
+  return bytes;
+}
+
+function getImageDimensions(dataUrl) {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth || img.width || 800, height: img.naturalHeight || img.height || 600 });
+      img.onerror = () => resolve({ width: 800, height: 600 });
+      img.src = dataUrl;
+    } catch {
+      resolve({ width: 800, height: 600 });
+    }
+  });
+}
+
+async function exportDocx() {
+  try {
+    if (!window.docx) {
+      showToast('Biblioteca DOCX indisponível');
+      return;
+    }
+    const { Document, Packer, Paragraph, HeadingLevel, TextRun, Table, TableRow, TableCell, AlignmentType, Media } = window.docx;
+
+    const now = new Date();
+    const title = 'Homolog — Relatório de Captura';
+    const subtitle = `Gerado em ${now.toLocaleString()}`;
+    // Criar doc com numeração automática para passos
+    const doc = new Document({
+      numbering: {
+        config: [
+          {
+            reference: 'steps-numbering',
+            levels: [
+              {
+                level: 0,
+                format: 'decimal',
+                text: '%1.',
+                alignment: AlignmentType.LEFT,
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const children = [];
+    children.push(new Paragraph({ text: title, heading: HeadingLevel.TITLE }));
+    children.push(new Paragraph({ text: subtitle }));
+    children.push(new Paragraph({ text: `Total de passos: ${steps.length}` }));
+    children.push(new Paragraph({ text: `Total de logs: ${logs.length}` }));
+    children.push(new Paragraph({ text: '' }));
+
+    // Tabela de metadados dos passos
+    const tableHeader = new TableRow({
+      children: [
+        new TableCell({ children: [new Paragraph({ text: 'Passo', bold: true })] }),
+        new TableCell({ children: [new Paragraph({ text: 'Título', bold: true })] }),
+        new TableCell({ children: [new Paragraph({ text: 'Tag', bold: true })] }),
+        new TableCell({ children: [new Paragraph({ text: 'Descrição', bold: true })] }),
+      ],
+    });
+    const tableRows = [tableHeader];
+    steps.forEach((s, idx) => {
+      tableRows.push(new TableRow({
+        children: [
+          new TableCell({ children: [new Paragraph(String(idx + 1))] }),
+          new TableCell({ children: [new Paragraph(String(s.title || ''))] }),
+          new TableCell({ children: [new Paragraph(String(s.tag || ''))] }),
+          new TableCell({ children: [new Paragraph(String(s.description || ''))] }),
+        ],
+      }));
+    });
+    const stepsTable = new Table({ rows: tableRows, width: { size: 100, type: 'pct' } });
+    children.push(new Paragraph({ text: 'Resumo dos passos', heading: HeadingLevel.HEADING_2 }));
+    children.push(steps.length ? stepsTable : new Paragraph({ text: 'Nenhum passo.' }));
+    children.push(new Paragraph({ text: '' }));
+    children.push(new Paragraph({ text: 'Detalhes dos passos', heading: HeadingLevel.HEADING_2 }));
+
+    // Imagens dos passos com títulos (dimensionadas)
+    for (let i = 0; i < steps.length; i++) {
+      const s = steps[i];
+      const t = s.title || `Passo`;
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: t, bold: true })],
+          numbering: { reference: 'steps-numbering', level: 0 },
+        })
+      );
+      if (s.imageDataUrl) {
+        const dims = await getImageDimensions(s.imageDataUrl);
+        const maxW = 640;
+        const scale = dims.width > maxW ? maxW / dims.width : 1;
+        const w = Math.round(dims.width * scale);
+        const h = Math.round(dims.height * scale);
+        const bytes = dataUrlToUint8Array(s.imageDataUrl);
+        children.push(Media.addImage(doc, bytes, w, h));
+      }
+      if (s.description) children.push(new Paragraph({ text: s.description }));
+      if (s.tag) children.push(new Paragraph({ text: `Tag: ${s.tag}` }));
+      children.push(new Paragraph({ text: '' }));
+    }
+
+    // Logs
+    children.push(new Paragraph({ text: 'Logs de cliques', heading: HeadingLevel.HEADING_2 }));
+    if (logs.length) {
+      logs.forEach(l => {
+        children.push(new Paragraph({ children: [new TextRun({ text: `• ${l.message} — ${new Date(l.ts).toLocaleTimeString()}` })] }));
+      });
+    } else {
+      children.push(new Paragraph({ text: 'Nenhum log.' }));
+    }
+
+    doc.addSection({ children });
+
+    const blob = await Packer.toBlob(doc);
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    a.href = url;
+    a.download = `homolog_relatorio_${now.toISOString().slice(0,19).replace(/[:T]/g,'-')}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+    showToast('DOCX exportado');
+  } catch (e) {
+    console.warn('Falha ao exportar DOCX:', e);
+    showToast('Não foi possível gerar o DOCX');
+  }
+}
+
+if (els.exportDocx) {
+  els.exportDocx.addEventListener('click', exportDocx);
 }

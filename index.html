@@ -23,6 +23,8 @@
         <button id="addStepBtn" class="accent">Adicionar passo</button>
         <button id="toggleExpandBtn" class="secondary" aria-controls="videoWrapper" aria-expanded="false">Expandir captura</button>
         <button id="downloadHtmlBtn" class="secondary" aria-label="Baixar como HTML">Baixar HTML</button>
+        <button id="exportDocxBtn" class="secondary" aria-label="Exportar como DOCX">Exportar DOCX</button>
+        <span id="statusText" class="status-pill" role="status" aria-live="polite">Pronto</span>
         <button id="clearStepsBtn" class="danger">Limpar passos</button>
       </div>
     </header>
@@ -51,12 +53,12 @@
 
     <footer class="app-footer">
       <span>Homolog — MVP inspirado no Scribe</span>
-      <span id="statusText">Pronto</span>
     </footer>
 
     <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
     <div id="imageModal" class="modal hidden" role="dialog" aria-modal="true" aria-hidden="true"><img id="modalImage" alt="Screenshot" tabindex="0" /></div>
 
+    <script src="https://cdn.jsdelivr.net/npm/docx@8.3.2/build/index.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js" defer></script>
     <script type="module" src="./app.js"></script>
   </body>

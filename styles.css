@@ -55,6 +55,18 @@ button {
   transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
 }
 button:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 6px 18px rgba(34,197,94,0.12); }
+.status-pill {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.18);
+  border: 1px solid var(--border);
+  color: var(--brand-green);
+  font-size: 12px;
+}
 .primary { background: var(--primary); border-color: var(--primary-700); }
 .accent { background: var(--accent); border-color: var(--accent-700); color: #1f1f1f; }
 .secondary { background: #0e1a16; }
