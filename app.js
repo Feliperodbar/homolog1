@@ -2,11 +2,7 @@ const els = {
   start: document.getElementById('startCaptureBtn'),
   stop: document.getElementById('stopCaptureBtn'),
   add: document.getElementById('addStepBtn'),
-  exportHtml: document.getElementById('exportHtmlBtn'),
   toggleExpand: document.getElementById('toggleExpandBtn'),
-  copyMd: document.getElementById('copyMdBtn'),
-  downloadMd: document.getElementById('downloadMdBtn'),
-  downloadHtml: document.getElementById('downloadHtmlBtn'),
   clear: document.getElementById('clearStepsBtn'),
   video: document.getElementById('screenVideo'),
   videoWrapper: document.getElementById('videoWrapper'),
@@ -17,7 +13,6 @@ const els = {
   imageModal: document.getElementById('imageModal'),
   modalImage: document.getElementById('modalImage'),
   status: document.getElementById('statusText'),
-  headerMenuBtn: document.getElementById('headerMenuBtn'),
 };
 
 let mediaStream = null;
@@ -26,6 +21,15 @@ let logs = [];
 
 const STORAGE_KEY = 'homolog_steps_v1';
 const LOGS_STORAGE_KEY = 'homolog_logs_v1';
+
+// Detecção de movimento reduzido: reflete preferência no documento
+const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+function applyMotionPreference(e) {
+  const reduced = !!e.matches;
+  document.documentElement.setAttribute('data-reduced-motion', reduced ? 'true' : 'false');
+}
+applyMotionPreference(reducedMotionQuery);
+try { reducedMotionQuery.addEventListener('change', applyMotionPreference); } catch {}
 
 function showToast(msg, ms = 1600) {
   if (!els.toast) return;
@@ -253,142 +257,8 @@ function renderSteps() {
   }
 }
 
-async function exportDocx() {
-  // Tenta exportar via servidor primeiro (POST /export-docx). Se falhar, usa a exportação no cliente.
-  if (!steps || !steps.length) { showToast('Nenhum passo para exportar'); return; }
-  try {
-    const resp = await fetch('/export-docx', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ steps })
-    });
-    if (resp.ok) {
-      const blob = await resp.blob();
-      const filename = (resp.headers.get('Content-Disposition') || '').split('filename=')[1] || 'homolog_export.docx';
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = filename.replace(/"/g, ''); a.click();
-      URL.revokeObjectURL(url);
-      showToast('Exportado como DOCX (servidor)');
-      return;
-    }
-    // se status não ok, cai para fallback
-    console.warn('Export via servidor retornou status', resp.status);
-  } catch (e) {
-    console.warn('Falha ao exportar via servidor, tentando exportar no cliente:', e);
-  }
 
-  // Fallback: exportar no cliente usando docx CDN
-  const docxLib = window.docx || (typeof docx !== 'undefined' ? docx : null);
-  if (!docxLib) {
-    console.error('Biblioteca docx não está carregada para fallback.');
-    showToast('Exportação indisponível (docx ausente)');
-    return;
-  }
-  try {
-    await clientExportDocxFallback(docxLib);
-    showToast('Exportado como DOCX (navegador)');
-  } catch (e) {
-    console.error('Falha ao exportar DOCX no cliente:', e);
-    showToast('Falha na exportação DOCX');
-  }
-}
 
-async function clientExportDocxFallback(docxLib) {
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel, ImageRun } = docxLib;
-  const children = [];
-  children.push(new Paragraph({ text: 'Guia Homolog', heading: HeadingLevel.HEADING_1 }));
-  for (let i = 0; i < steps.length; i++) {
-    const s = steps[i];
-    const titleText = `${i + 1}. ${s.title || 'Passo'}`;
-    children.push(new Paragraph({ text: titleText, heading: HeadingLevel.HEADING_2 }));
-    if (s.tag) children.push(new Paragraph({ children: [new TextRun({ text: `Tag: ${s.tag}`, bold: true })] }));
-    if (s.description) children.push(new Paragraph({ text: s.description }));
-    if (s.imageDataUrl && ImageRun) {
-      const uint8 = dataUrlToUint8Array(s.imageDataUrl);
-      const { width, height } = await getImageDimensions(s.imageDataUrl);
-      const maxW = 640; const scale = width > maxW ? maxW / width : 1;
-      const w = Math.round(width * scale); const h = Math.round(height * scale);
-      children.push(new Paragraph({ children: [new ImageRun({ data: uint8, transformation: { width: w, height: h } })] }));
-    }
-    children.push(new Paragraph({ text: '' }));
-  }
-  const doc = new Document({ sections: [{ properties: {}, children }] });
-  const blob = await Packer.toBlob(doc);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = 'homolog_export.docx'; a.click();
-  URL.revokeObjectURL(url);
-}
-
-function copyMarkdown() {
-  const md = steps.map((s, i) => (
-    `### ${i + 1}. ${s.title || 'Passo'}\n\n${s.description ? s.description + '\n\n' : ''}![](${s.imageDataUrl})\n`
-  )).join('\n');
-  navigator.clipboard.writeText(md).then(() => {
-    showToast('Markdown copiado');
-  }).catch(() => showToast('Falha ao copiar Markdown'));
-}
-
-function downloadMarkdown() {
-  if (!steps.length) { showToast('Nenhum passo para exportar'); return; }
-  const md = steps.map((s, i) => (
-    `### ${i + 1}. ${s.title || 'Passo'}\n\n${s.description ? s.description + '\n\n' : ''}![](${s.imageDataUrl})\n`
-  )).join('\n');
-  const blob = new Blob([md], { type: 'text/markdown;charset=UTF-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = 'homolog_export.md'; a.click();
-  URL.revokeObjectURL(url);
-  showToast('Markdown baixado');
-}
-
-function downloadHtml() {
-  if (!steps.length) { showToast('Nenhum passo para exportar'); return; }
-  const head = `<!doctype html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Guia Homolog</title><style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,sans-serif;padding:24px;line-height:1.5;color:#0f172a;background:#fff}h1{font-size:24px;margin:0 0 16px}h2{font-size:18px;margin:24px 0 8px}p{margin:6px 0}img{max-width:100%;height:auto;border:1px solid #e5e7eb;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.08);margin:8px 0}nav.toc{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin:12px 0}nav.toc h2{font-size:16px;margin:0 0 8px}nav.toc ol{margin:0;padding-left:18px}nav.toc li{margin:4px 0}</style></head><body>`;
-  let body = `<h1>Guia Homolog</h1>`;
-
-  // Sumário com âncoras para cada passo
-  let toc = `<nav class="toc"><h2>Sumário</h2><ol>`;
-  for (let i = 0; i < steps.length; i++) {
-    const s = steps[i];
-    const title = escapeHtml(s.title || 'Passo');
-    toc += `<li><a href="#step-${i + 1}">${i + 1}. ${title}</a></li>`;
-  }
-  toc += `</ol></nav>`;
-  body += toc;
-
-  // Conteúdo dos passos com ids para âncoras
-  for (let i = 0; i < steps.length; i++) {
-    const s = steps[i];
-    const title = escapeHtml(s.title || 'Passo');
-    body += `<h2 id="step-${i + 1}">${i + 1}. ${title}</h2>`;
-    if (s.tag) body += `<p><strong>Tag:</strong> ${escapeHtml(s.tag)}</p>`;
-    if (s.description) body += `<p>${escapeHtml(s.description)}</p>`;
-    if (s.imageDataUrl) body += `<img src="${s.imageDataUrl}" alt="${title}">`;
-  }
-  const html = head + body + `</body></html>`;
-  const blob = new Blob([html], { type: 'text/html;charset=UTF-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url; a.download = 'homolog_export.html'; a.click();
-  URL.revokeObjectURL(url);
-  showToast('HTML baixado');
-}
-
-function dataUrlToUint8Array(dataUrl) {
-  const parts = dataUrl.split(',');
-  const base64 = parts[1] || '';
-  const binary = atob(base64);
-  const len = binary.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
-
-function getImageDimensions(dataUrl) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve({ width: img.naturalWidth || img.width, height: img.naturalHeight || img.height });
-    img.onerror = (e) => reject(e);
-    img.src = dataUrl;
-  });
-}
 
 function escapeHtml(str) {
   return String(str)
@@ -403,54 +273,18 @@ function escapeHtml(str) {
 els.start.addEventListener('click', startCapture);
 els.stop.addEventListener('click', stopCapture);
 els.add.addEventListener('click', addStep);
-els.exportHtml.addEventListener('click', exportDocx);
+// Removido: exportação DOCX
 if (els.toggleExpand) {
   els.toggleExpand.addEventListener('click', toggleFullscreenCapture);
   document.addEventListener('fullscreenchange', updateExpandButtonLabel);
 }
-els.copyMd.addEventListener('click', copyMarkdown);
-if (els.downloadMd) els.downloadMd.addEventListener('click', downloadMarkdown);
-if (els.downloadHtml) els.downloadHtml.addEventListener('click', downloadHtml);
+// Removido: copiar/baixar Markdown
+// Removido: botão de baixar HTML
 els.clear.addEventListener('click', () => {
   if (confirm('Tem certeza que deseja limpar todos os passos?')) {
     clearSteps();
   }
 });
-
-// Menu responsivo do header (tela pequena)
-if (els.headerMenuBtn) {
-  const actionsContainer = document.querySelector('.actions');
-  const btn = els.headerMenuBtn;
-  const toggle = (open) => {
-    const isOpen = typeof open === 'boolean' ? open : !actionsContainer.classList.contains('open');
-    if (isOpen) {
-      actionsContainer.classList.add('open');
-      btn.setAttribute('aria-expanded', 'true');
-      btn.classList.add('open');
-    } else {
-      actionsContainer.classList.remove('open');
-      btn.setAttribute('aria-expanded', 'false');
-      btn.classList.remove('open');
-    }
-  };
-  btn.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
-
-  // fechar ao clicar fora
-  document.addEventListener('click', (e) => {
-    if (!actionsContainer) return;
-    if (!actionsContainer.classList.contains('open')) return;
-    const target = e.target;
-    if (target === btn || actionsContainer.contains(target)) return;
-    toggle(false);
-  });
-
-  // fechar ao redimensionar para desktop
-  window.addEventListener('resize', () => {
-    if (window.innerWidth > 680 && actionsContainer.classList.contains('open')) {
-      toggle(false);
-    }
-  });
-}
 els.video.addEventListener('click', (e) => {
   if (!mediaStream) {
     showToast('Inicie a captura para criar passos');
@@ -487,18 +321,27 @@ function updateExpandButtonLabel() {
   if (!els.toggleExpand) return;
   const isFs = !!document.fullscreenElement;
   els.toggleExpand.textContent = isFs ? 'Retrair captura' : 'Expandir captura';
+  els.toggleExpand.setAttribute('aria-expanded', String(isFs));
 }
 
+let lastFocusedEl = null;
 function openImageModal(url) {
   if (!els.imageModal || !els.modalImage) return;
   els.modalImage.src = url;
   els.imageModal.classList.remove('hidden');
+  els.imageModal.setAttribute('aria-hidden', 'false');
+  lastFocusedEl = document.activeElement;
+  try { els.imageModal.focus(); } catch {}
   els.imageModal.addEventListener('click', closeImageModal, { once: true });
+  const escHandler = (ev) => { if (ev.key === 'Escape') closeImageModal(); };
+  document.addEventListener('keydown', escHandler, { once: true });
 }
 
 function closeImageModal() {
   if (!els.imageModal) return;
   els.imageModal.classList.add('hidden');
+  els.imageModal.setAttribute('aria-hidden', 'true');
+  try { if (lastFocusedEl && typeof lastFocusedEl.focus === 'function') lastFocusedEl.focus(); } catch {}
 }
 function drawPointerHighlight(ctx, x, y, baseRadius = 22) {
   const r = baseRadius;

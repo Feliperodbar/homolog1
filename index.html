@@ -1,113 +1,42 @@
 <!doctype html>
 <html lang="pt-BR">
-
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Homolog — Criador de Passos</title>
-  <link rel="icon" href="./assets/icon.svg" />
-  <link rel="stylesheet" href="./styles.css" />
-</head>
-
-<body>
-  <header class="app-header">
-    <div class="brand">
-      <img src="./assets/icon.svg" alt="Homolog" class="brand-icon" />
-      <h1>Homolog</h1>
-    </div>
-    <!-- Menu button para telas pequenas -->
-    <button id="headerMenuBtn" class="menu-btn" aria-expanded="false" aria-label="Abrir menu de ações">
-      <span class="bar"></span>
-      <span class="bar"></span>
-      <span class="bar"></span>
-    </button>
-
-    <div class="actions">
-      <button id="startCaptureBtn" class="primary">
-        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M8 5v14l11-7z" />
-        </svg>
-        <span>Iniciar captura</span>
-      </button>
-      <button id="stopCaptureBtn" class="secondary">
-        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <rect x="6" y="6" width="12" height="12" rx="2" />
-        </svg>
-        <span>Parar captura</span>
-      </button>
-      <button id="addStepBtn" class="accent">
-        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M11 11V6h2v5h5v2h-5v5h-2v-5H6v-2z" />
-        </svg>
-        <span>Adicionar passo</span>
-      </button>
-      <button id="exportHtmlBtn" class="secondary">
-        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-          <path d="M14 2v6h6" />
-        </svg>
-        <span>Exportar DOCX</span>
-      </button>
-      <button id="toggleExpandBtn" class="secondary">
-        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M3 12h6M21 12h-6M12 3v6M12 21v-6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
-            fill="none" />
-        </svg>
-        <span>Expandir captura</span>
-      </button>
-      <button id="copyMdBtn" class="secondary">
-        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1z" />
-          <path d="M20 5H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z" />
-        </svg>
-        <span>Copiar Markdown</span>
-      </button>
-      <button id="downloadMdBtn" class="secondary">
-        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 3v10" />
-          <path d="M5 12l7 7 7-7" />
-          <path d="M5 21h14" />
-        </svg>
-        <span>Baixar Markdown</span>
-      </button>
-      <button id="downloadHtmlBtn" class="secondary">
-        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 3v10" />
-          <path d="M5 12l7 7 7-7" />
-          <path d="M5 21h14" />
-        </svg>
-        <span>Baixar HTML</span>
-      </button>
-      <button id="clearStepsBtn" class="danger">
-        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M3 6h18" />
-          <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-        </svg>
-        <span>Limpar passos</span>
-      </button>
-    </div>
-  </header>
-
-  <main class="layout">
-    <div class="left">
-      <section class="capture">
-        <div class="hero">
-          <h2>Criador de Passos</h2>
-          <p class="hero-sub">Capture ações da tela e transforme em documentação passo-a-passo.</p>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Homolog — Criador de Passos</title>
+    <link rel="icon" href="./assets/icon.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a href="#main" class="skip-link">Ir para o conteúdo</a>
+    <header class="app-header">
+      <div class="brand">
+        <img src="./assets/icon.svg" alt="Homolog" class="brand-icon" />
+        <div class="brand-text">
+          <h1>Homolog</h1>
+          <p class="tagline">Energia sustentável & tecnologia</p>
         </div>
+      </div>
+      <div class="actions">
+        <button id="startCaptureBtn" class="primary">Iniciar captura</button>
+        <button id="stopCaptureBtn" class="secondary">Parar captura</button>
+        <button id="addStepBtn" class="accent">Adicionar passo</button>
+        <button id="toggleExpandBtn" class="secondary" aria-controls="videoWrapper" aria-expanded="false">Expandir captura</button>
+        <button id="clearStepsBtn" class="danger">Limpar passos</button>
+      </div>
+    </header>
+
+    <main id="main" class="layout">
+      <section class="capture">
         <div id="videoWrapper" class="video-wrapper">
           <video id="screenVideo" autoplay muted playsinline></video>
           <div id="videoOverlay" class="overlay hidden">Captura em andamento…</div>
         </div>
         <p class="hint">
-          Dica: após iniciar, clique sobre o vídeo para criar um passo com realce no ponteiro (ou use "Adicionar
-          passo").
+          Dica: após iniciar, clique sobre o vídeo para criar um passo com realce no ponteiro (ou use "Adicionar passo").
         </p>
       </section>
-    </div>
 
-    <aside class="sidebar">
       <section class="steps">
         <h2>Passos</h2>
         <div id="stepsList" class="steps-list"></div>
@@ -117,20 +46,17 @@
         <h2>Logs de cliques</h2>
         <div id="logsList" class="log-list"></div>
       </section>
-    </aside>
-  </main>
+    </main>
 
-  <footer class="app-footer">
-    <span>Homolog — MVP inspirado no Scribe</span>
-    <span id="statusText">Pronto</span>
-  </footer>
+    <footer class="app-footer">
+      <span>Homolog — MVP inspirado no Scribe</span>
+      <span id="statusText">Pronto</span>
+    </footer>
 
-  <div id="toast" class="toast hidden"></div>
-  <div id="imageModal" class="modal hidden"><img id="modalImage" alt="Screenshot" /></div>
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+    <div id="imageModal" class="modal hidden" role="dialog" aria-modal="true" aria-hidden="true"><img id="modalImage" alt="Screenshot" tabindex="0" /></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/docx@8.3.0/build/index.js" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js" defer></script>
-  <script type="module" src="./app.js"></script>
-</body>
-
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js" defer></script>
+    <script type="module" src="./app.js"></script>
+  </body>
 </html>
