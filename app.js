@@ -50,10 +50,19 @@ async function startCapture() {
       video: { cursor: 'always' },
       audio: false,
     });
+
+    const videoTrack = mediaStream.getVideoTracks()[0];
+    videoTrack.onended = () => {
+        stopCapture();
+    };
+
     els.video.srcObject = mediaStream;
     els.overlay.classList.remove('hidden');
     setStatus('Capturando tela');
     showToast('Captura iniciada');
+    if (els.videoWrapper?.requestFullscreen) {
+      await els.videoWrapper.requestFullscreen();
+    }
   } catch (err) {
     console.error('Erro ao iniciar captura:', err);
     showToast('Não foi possível iniciar a captura');
@@ -68,6 +77,9 @@ function stopCapture() {
     els.overlay.classList.add('hidden');
     setStatus('Pronto');
     showToast('Captura finalizada');
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    }
   }
 }
 
@@ -158,21 +170,16 @@ function removeLog(id) {
   persistLogs();
 }
 
-function addStep() {
-  const image = captureScreenshot();
-  if (!image) return;
-  const id = `step_${Date.now()}`;
-  const step = {
-    id,
-    title: 'Novo passo',
-    description: '',
-    imageDataUrl: image,
-    createdAt: Date.now(),
+function addStep(img, title, description) {
+  const newStep = {
+    id: nanoid(),
+    img: img || '',
+    title: title || `Passo #${steps.length + 1} — ${new Date().toLocaleString('pt-BR')}`,
+    description: description || '',
   };
-  steps.push(step);
+  steps.push(newStep);
+  persistSteps();
   renderSteps();
-  persist();
-  showToast('Passo adicionado');
 }
 
 function removeStep(id) {
@@ -328,7 +335,6 @@ function downloadHtml() {
     showToast('Não foi possível gerar o HTML');
   }
 }
-
 // Eventos
 els.start.addEventListener('click', startCapture);
 els.stop.addEventListener('click', stopCapture);
@@ -342,7 +348,7 @@ if (els.toggleExpand) {
 // Removido: copiar/baixar Markdown
 // Removido: botão de baixar HTML
 els.clear.addEventListener('click', () => {
-  if (confirm('Tem certeza que deseja limpar todos os passos?')) {
+if (confirm('Tem certeza que deseja limpar todos os passos?')) {
     clearSteps();
   }
 });
@@ -358,7 +364,6 @@ els.video.addEventListener('click', (e) => {
   }
   addStepWithHighlight(coords);
 });
-
 // Inicialização
 load();
 loadLogs();
@@ -581,33 +586,9 @@ function getImageDimensions(dataUrl) {
 
 async function exportDocx() {
   try {
-    if (!window.docx) {
-      showToast('Biblioteca DOCX indisponível');
-      return;
-    }
-    const { Document, Packer, Paragraph, HeadingLevel, TextRun, Table, TableRow, TableCell, AlignmentType, Media } = window.docx;
-
     const now = new Date();
     const title = 'Homolog — Relatório de Captura';
     const subtitle = `Gerado em ${now.toLocaleString()}`;
-    // Criar doc com numeração automática para passos
-    const doc = new Document({
-      numbering: {
-        config: [
-          {
-            reference: 'steps-numbering',
-            levels: [
-              {
-                level: 0,
-                format: 'decimal',
-                text: '%1.',
-                alignment: AlignmentType.LEFT,
-              },
-            ],
-          },
-        ],
-      },
-    });
 
     const children = [];
     children.push(new Paragraph({ text: title, heading: HeadingLevel.TITLE }));
@@ -619,10 +600,10 @@ async function exportDocx() {
     // Tabela de metadados dos passos
     const tableHeader = new TableRow({
       children: [
-        new TableCell({ children: [new Paragraph({ text: 'Passo', bold: true })] }),
-        new TableCell({ children: [new Paragraph({ text: 'Título', bold: true })] }),
-        new TableCell({ children: [new Paragraph({ text: 'Tag', bold: true })] }),
-        new TableCell({ children: [new Paragraph({ text: 'Descrição', bold: true })] }),
+        new TableCell({ children: [new Paragraph({ text: 'Passo', style: "strong" })] }),
+        new TableCell({ children: [new Paragraph({ text: 'Título', style: "strong" })] }),
+        new TableCell({ children: [new Paragraph({ text: 'Tag', style: "strong" })] }),
+        new TableCell({ children: [new Paragraph({ text: 'Descrição', style: "strong" })] }),
       ],
     });
     const tableRows = [tableHeader];
@@ -659,7 +640,17 @@ async function exportDocx() {
         const w = Math.round(dims.width * scale);
         const h = Math.round(dims.height * scale);
         const bytes = dataUrlToUint8Array(s.imageDataUrl);
-        children.push(Media.addImage(doc, bytes, w, h));
+        children.push(new Paragraph({
+            children: [
+                new ImageRun({
+                    data: bytes,
+                    transformation: {
+                        width: w,
+                        height: h,
+                    },
+                }),
+            ],
+        }));
       }
       if (s.description) children.push(new Paragraph({ text: s.description }));
       if (s.tag) children.push(new Paragraph({ text: `Tag: ${s.tag}` }));
@@ -676,16 +667,36 @@ async function exportDocx() {
       children.push(new Paragraph({ text: 'Nenhum log.' }));
     }
 
-    doc.addSection({ children });
+    const doc = new Document({
+      styles: {
+        paragraph: {
+            strong: {
+                run: {
+                    bold: true,
+                },
+            },
+        },
+      },
+      numbering: {
+        config: [
+          {
+            reference: 'steps-numbering',
+            levels: [
+              {
+                level: 0,
+                format: 'decimal',
+                text: '%1.',
+                alignment: AlignmentType.LEFT,
+              },
+            ],
+          },
+        ],
+      },
+      sections: [{ children }],
+    });
 
     const blob = await Packer.toBlob(doc);
-    const a = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    a.href = url;
-    a.download = `homolog_relatorio_${now.toISOString().slice(0,19).replace(/[:T]/g,'-')}.docx`;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+    saveAs(blob, `homolog_relatorio_${now.toISOString().slice(0,19).replace(/[:T]/g,'-')}.docx`);
     showToast('DOCX exportado');
   } catch (e) {
     console.warn('Falha ao exportar DOCX:', e);

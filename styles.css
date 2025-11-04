@@ -72,9 +72,21 @@ button:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow
 .secondary { background: #0e1a16; }
 .danger { background: #2a1c1c; border-color: #472222; color: #f6d1d1; }
 
+.icon-only {
+  padding: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.icon-only svg {
+  width: 16px;
+  height: 16px;
+}
+
 .layout {
   display: grid;
-  grid-template-columns: 3fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: 16px;
   padding: 16px;
 }
@@ -84,6 +96,7 @@ button:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
+  height: 100%;
 }
 .video-wrapper {
   position: relative;
@@ -94,7 +107,7 @@ button:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow
 }
 #screenVideo {
   width: 100%;
-  height: auto;
+  height: 100%;
   display: block;
   background: #0c1016;
 }
@@ -118,17 +131,23 @@ button:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 .steps h2 { margin: 0 0 8px; font-size: 16px; }
 .steps-list {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 16px;
+  max-height: 75vh;
+  overflow-y: auto;
+  padding: 4px;
 }
 
 .step-card {
   display: grid;
-  grid-template-columns: 160px 1fr auto;
+  grid-template-columns: 1fr;
   gap: 12px;
   align-items: start;
   padding: 12px;
@@ -139,10 +158,20 @@ button:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow
 }
 .step-card:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(13,148,136,0.18); border-color: #185a46; }
 .step-thumb {
-  width: 160px; height: 100px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); cursor: zoom-in;
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: zoom-in;
 }
 .step-fields { display: grid; gap: 8px; }
-.step-actions { display: grid; gap: 8px; }
+.step-actions {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 8px;
+  justify-content: start;
+}
 
 label { font-size: 12px; color: var(--muted); }
 input[type="text"], textarea {
@@ -208,9 +237,16 @@ textarea { min-height: 68px; resize: vertical; }
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px;
+  width: 50%;
 }
-.logs h2 { margin: 0 0 8px; font-size: 16px; }
-.log-list { display: grid; gap: 8px; }
+.logs h2 { margin: 0; font-size: 16px; }
+.log-list {
+  display: grid;
+  gap: 8px;
+  max-height: 15vh;
+  overflow-y: auto;
+  padding-right: 8px;
+}
 .log-item {
   display: flex; justify-content: space-between; align-items: center;
   background: #0f151f; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
@@ -239,6 +275,29 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   outline: 2px solid var(--brand-green);
   outline-offset: 2px;
   border-color: var(--brand-green);
+}
+
+/* Custom scrollbar for webkit browsers */
+.steps-list::-webkit-scrollbar,
+.log-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.steps-list::-webkit-scrollbar-track,
+.log-list::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 4px;
+}
+
+.steps-list::-webkit-scrollbar-thumb,
+.log-list::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.steps-list::-webkit-scrollbar-thumb:hover,
+.log-list::-webkit-scrollbar-thumb:hover {
+  background: var(--primary-700);
 }
 
 /* Respeitar preferências de movimento reduzido */

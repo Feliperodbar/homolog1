@@ -1,65 +1,86 @@
 <!doctype html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Homolog — Criador de Passos</title>
-    <link rel="icon" href="./assets/icon.svg" />
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <a href="#main" class="skip-link">Ir para o conteúdo</a>
-    <header class="app-header">
-      <div class="brand">
-        <img src="./assets/icon.svg" alt="Homolog" class="brand-icon" />
-        <div class="brand-text">
-          <h1>Homolog</h1>
-          <p class="tagline">Energia sustentável & tecnologia</p>
-        </div>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Homolog — Criador de Passos</title>
+  <link rel="icon" href="./assets/icon.svg" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <a href="#main" class="skip-link">Ir para o conteúdo</a>
+  <header class="app-header">
+    <div class="brand">
+      <img src="./assets/icon.svg" alt="Homolog" class="brand-icon" />
+      <div class="brand-text">
+        <h1>Homolog</h1>
+        <p class="tagline">Energia sustentável & tecnologia</p>
       </div>
-      <div class="actions">
-        <button id="startCaptureBtn" class="primary">Iniciar captura</button>
-        <button id="stopCaptureBtn" class="secondary">Parar captura</button>
-        <button id="addStepBtn" class="accent">Adicionar passo</button>
-        <button id="toggleExpandBtn" class="secondary" aria-controls="videoWrapper" aria-expanded="false">Expandir captura</button>
-        <button id="downloadHtmlBtn" class="secondary" aria-label="Baixar como HTML">Baixar HTML</button>
-        <button id="exportDocxBtn" class="secondary" aria-label="Exportar como DOCX">Exportar DOCX</button>
-        <span id="statusText" class="status-pill" role="status" aria-live="polite">Pronto</span>
-        <button id="clearStepsBtn" class="danger">Limpar passos</button>
+    </div>
+    <div class="actions">
+      <button id="startCaptureBtn" class="primary">Iniciar captura</button>
+      <button id="stopCaptureBtn" class="secondary">Parar captura</button>
+      <button id="addStepBtn" class="accent">Adicionar passo</button>
+      <button id="toggleExpandBtn" class="secondary icon-only" aria-controls="videoWrapper" aria-expanded="false"
+        aria-label="Expandir captura">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+          class="feather feather-maximize">
+          <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3">
+          </path>
+        </svg>
+      </button>
+      <button id="downloadHtmlBtn" class="secondary icon-only" aria-label="Baixar como HTML">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+          class="feather feather-code">
+          <polyline points="16 18 22 12 16 6"></polyline>
+          <polyline points="8 6 2 12 8 18"></polyline>
+        </svg>
+      </button>
+      <button id="exportDocxBtn" class="secondary icon-only" aria-label="Exportar como DOCX">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+          class="feather feather-file-text">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14 2 14 8 20 8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+          <polyline points="10 9 9 9 8 9"></polyline>
+        </svg>
+      </button>
+      <span id="statusText" class="status-pill" role="status" aria-live="polite">Pronto</span>
+      <button id="clearStepsBtn" class="danger">Limpar passos</button>
+    </div>
+  </header>
+
+  <main id="main" class="layout">
+    <section class="capture">
+      <div id="videoWrapper" class="video-wrapper">
+        <video id="screenVideo" autoplay muted playsinline></video>
+        <div id="videoOverlay" class="overlay hidden">Captura em andamento…</div>
       </div>
-    </header>
+      <p class="hint">
+        Dica: após iniciar, clique sobre o vídeo para criar um passo com realce no ponteiro (ou use "Adicionar passo").
+      </p>
+    </section>
 
-    <main id="main" class="layout">
-      <section class="capture">
-        <div id="videoWrapper" class="video-wrapper">
-          <video id="screenVideo" autoplay muted playsinline></video>
-          <div id="videoOverlay" class="overlay hidden">Captura em andamento…</div>
-        </div>
-        <p class="hint">
-          Dica: após iniciar, clique sobre o vídeo para criar um passo com realce no ponteiro (ou use "Adicionar passo").
-        </p>
-      </section>
+    <section class="steps">
+      <h2>Passos</h2>
+      <div id="stepsList" class="steps-list"></div>
+    </section>
 
-      <section class="steps">
-        <h2>Passos</h2>
-        <div id="stepsList" class="steps-list"></div>
-      </section>
 
-      <section class="logs">
-        <h2>Logs de cliques</h2>
-        <div id="logsList" class="log-list"></div>
-      </section>
-    </main>
+  </main>
 
-    <footer class="app-footer">
-      <span>Homolog — MVP inspirado no Scribe</span>
-    </footer>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+  <div id="imageModal" class="modal hidden" role="dialog" aria-modal="true" aria-hidden="true"><img id="modalImage"
+      alt="Screenshot" tabindex="0" /></div>
 
-    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
-    <div id="imageModal" class="modal hidden" role="dialog" aria-modal="true" aria-hidden="true"><img id="modalImage" alt="Screenshot" tabindex="0" /></div>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js" defer></script>
+  <script type="module" src="./app.js"></script>
+</body>
 
-    <script src="https://cdn.jsdelivr.net/npm/docx@8.3.2/build/index.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js" defer></script>
-    <script type="module" src="./app.js"></script>
-  </body>
 </html>

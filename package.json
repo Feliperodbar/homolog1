@@ -1,0 +1,39 @@
+{
+  "name": "homolog1-1",
+  "version": "1.0.0",
+  "description": "Homologação",
+  "main": "app.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Feliperodbar/homolog1.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Feliperodbar/homolog1/issues"
+  },
+  "homepage": "https://github.com/Feliperodbar/homolog1#readme",
+  "devDependencies": {
+    "vite": "^7.1.12"
+  },
+  "dependencies": {
+    "docx": "^9.5.1",
+    "esbuild": "^0.25.12",
+    "fdir": "^6.5.0",
+    "file-saver": "^2.0.5",
+    "nanoid": "^3.3.11",
+    "picocolors": "^1.1.1",
+    "picomatch": "^4.0.3",
+    "postcss": "^8.5.6",
+    "rollup": "^4.52.5",
+    "source-map-js": "^1.2.1",
+    "tinyglobby": "^0.2.15"
+  }
+}
