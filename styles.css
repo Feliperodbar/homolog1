@@ -79,11 +79,6 @@ button:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow
   justify-content: center;
 }
 
-.icon-only svg {
-  width: 16px;
-  height: 16px;
-}
-
 .layout {
   display: grid;
   grid-template-columns: 1fr 1fr;
