@@ -30,7 +30,7 @@ const {
   Table,
   TableRow,
   TableCell,
-} = docx;
+} = docxLib;
 const saveAs = window.saveAs || undefined;
 
 let mediaStream = null;
