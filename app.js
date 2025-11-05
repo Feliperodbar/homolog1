@@ -448,6 +448,20 @@ function drawPointerHighlight(ctx, x, y, baseRadius = 22) {
   ctx.beginPath();
   ctx.arc(x, y, Math.max(4, Math.round(r * 0.2)), 0, Math.PI * 2);
   ctx.fill();
+
+  // Cruz central vermelha
+  const crossLen = Math.max(10, Math.round(r * 0.9));
+  const crossWidth = Math.max(2, Math.round(r * 0.16));
+  ctx.strokeStyle = 'rgba(239,68,68,1)';
+  ctx.lineWidth = crossWidth;
+  ctx.beginPath();
+  // linha horizontal
+  ctx.moveTo(x - crossLen, y);
+  ctx.lineTo(x + crossLen, y);
+  // linha vertical
+  ctx.moveTo(x, y - crossLen);
+  ctx.lineTo(x, y + crossLen);
+  ctx.stroke();
 }
 
 function getVideoFrameCoordsFromClient(clientX, clientY) {
