@@ -17,6 +17,22 @@ const els = {
   status: document.getElementById('statusText'),
 };
 
+// Integração com bibliotecas globais (docx e FileSaver)
+const docxLib = window.docx || {};
+const {
+  Document,
+  Packer,
+  Paragraph,
+  HeadingLevel,
+  AlignmentType,
+  ImageRun,
+  TextRun,
+  Table,
+  TableRow,
+  TableCell,
+} = docxLib;
+const saveAs = window.saveAs || undefined;
+
 let mediaStream = null;
 let steps = [];
 let logs = [];
@@ -411,23 +427,26 @@ function closeImageModal() {
 }
 function drawPointerHighlight(ctx, x, y, baseRadius = 22) {
   const r = baseRadius;
-  const glow = ctx.createRadialGradient(x, y, r * 0.5, x, y, r * 1.8);
-  glow.addColorStop(0, 'rgba(79,124,255,0.28)');
-  glow.addColorStop(1, 'rgba(79,124,255,0)');
+  // Brilho vermelho ao redor
+  const glow = ctx.createRadialGradient(x, y, r * 0.6, x, y, r * 2);
+  glow.addColorStop(0, 'rgba(239,68,68,0.30)'); // vermelho #ef4444
+  glow.addColorStop(1, 'rgba(239,68,68,0)');
   ctx.fillStyle = glow;
   ctx.beginPath();
-  ctx.arc(x, y, r * 1.8, 0, Math.PI * 2);
+  ctx.arc(x, y, r * 2, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.strokeStyle = 'rgba(79,124,255,0.95)';
-  ctx.lineWidth = Math.max(4, Math.round(r * 0.22));
+  // Círculo externo vermelho
+  ctx.strokeStyle = 'rgba(239,68,68,0.95)';
+  ctx.lineWidth = Math.max(4, Math.round(r * 0.24));
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.stroke();
 
-  ctx.fillStyle = 'rgba(20,184,166,0.9)';
+  // Ponto central vermelho sólido
+  ctx.fillStyle = 'rgba(239,68,68,1)';
   ctx.beginPath();
-  ctx.arc(x, y, Math.max(3, Math.round(r * 0.18)), 0, Math.PI * 2);
+  ctx.arc(x, y, Math.max(4, Math.round(r * 0.2)), 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -586,6 +605,11 @@ function getImageDimensions(dataUrl) {
 
 async function exportDocx() {
   try {
+    if (!Document || !Packer || !Paragraph || !TextRun || !ImageRun || !Table || !TableRow || !TableCell || !HeadingLevel || !AlignmentType || !saveAs) {
+      showToast('Bibliotecas para DOCX indisponíveis');
+      console.warn('docx/FileSaver não carregados:', { Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell, HeadingLevel, AlignmentType, saveAs });
+      return;
+    }
     const now = new Date();
     const title = 'Homolog — Relatório de Captura';
     const subtitle = `Gerado em ${now.toLocaleString()}`;
