@@ -602,3 +602,29 @@ function getBackendBase() {
 // Removido: exportação DOCX via backend
 
 // Removido: listener de botão Exportar DOCX
+async function exportDocxRedocx() {
+  try {
+    const url = 'http://localhost:8020/export-docx';
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ steps }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    const cd = resp.headers.get('content-disposition') || '';
+    const m = cd.match(/filename="?([^";]+)"?/i);
+    const filename = m ? m[1] : `homolog_export_${Date.now()}.docx`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    showToast('DOCX exportado via redocx');
+  } catch (e) {
+    console.warn('Falha ao exportar DOCX (redocx):', e);
+    showToast('Servidor redocx offline? Rode: npm run docx-server', 4000);
+  }
+}
