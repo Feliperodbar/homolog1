@@ -24,10 +24,8 @@
     "vite": "^7.1.12"
   },
   "dependencies": {
-    "docx": "^9.5.1",
     "esbuild": "^0.25.12",
     "fdir": "^6.5.0",
-    "file-saver": "^2.0.5",
     "nanoid": "^3.3.11",
     "picocolors": "^1.1.1",
     "picomatch": "^4.0.3",

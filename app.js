@@ -3,7 +3,6 @@ const els = {
   stop: document.getElementById('stopCaptureBtn'),
   add: document.getElementById('addStepBtn'),
   toggleExpand: document.getElementById('toggleExpandBtn'),
-  exportDocx: document.getElementById('exportDocxBtn'),
   downloadHtml: document.getElementById('downloadHtmlBtn'),
   clear: document.getElementById('clearStepsBtn'),
   video: document.getElementById('screenVideo'),
@@ -16,22 +15,7 @@ const els = {
   modalImage: document.getElementById('modalImage'),
   status: document.getElementById('statusText'),
 };
-
-
-const docxLib = window.docx || {};
-const {
-  Document,
-  Packer,
-  Paragraph,
-  HeadingLevel,
-  AlignmentType,
-  ImageRun,
-  TextRun,
-  Table,
-  TableRow,
-  TableCell,
-} = docxLib;
-const saveAs = window.saveAs || undefined;
+// Removido: integrações e tipos do cliente DOCX
 
 let mediaStream = null;
 let steps = [];
@@ -427,40 +411,49 @@ function closeImageModal() {
 }
 function drawPointerHighlight(ctx, x, y, baseRadius = 22) {
   const r = baseRadius;
-  // Brilho vermelho ao redor
-  const glow = ctx.createRadialGradient(x, y, r * 0.6, x, y, r * 2);
-  glow.addColorStop(0, 'rgba(239,68,68,0.30)'); // vermelho #ef4444
+  // Brilho vermelho ao redor do tip
+  const glow = ctx.createRadialGradient(x, y, r * 0.4, x, y, r * 1.8);
+  glow.addColorStop(0, 'rgba(239,68,68,0.35)');
   glow.addColorStop(1, 'rgba(239,68,68,0)');
   ctx.fillStyle = glow;
   ctx.beginPath();
-  ctx.arc(x, y, r * 2, 0, Math.PI * 2);
+  ctx.arc(x, y, r * 1.8, 0, Math.PI * 2);
   ctx.fill();
 
-  // Círculo externo vermelho
-  ctx.strokeStyle = 'rgba(239,68,68,0.95)';
-  ctx.lineWidth = Math.max(4, Math.round(r * 0.24));
-  ctx.beginPath();
-  ctx.arc(x, y, r, 0, Math.PI * 2);
-  ctx.stroke();
+  // Desenhar seta vermelha (orientada a -45°; ponta em x,y)
+  const size = r * 2.2;
+  const headLen = size * 0.6;
+  const headWidth = size * 0.55;
+  const tailLen = size * 1.0;
+  const tailWidth = Math.max(3, Math.round(size * 0.16));
+  const angle = -Math.PI / 4; // -45 graus
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const rot = (px, py) => ({ x: x + px * cos - py * sin, y: y + px * sin + py * cos });
 
-  // Ponto central vermelho sólido
+  const points = [
+    rot(0, 0), // ponta
+    rot(-headWidth / 2, headLen),
+    rot(-tailWidth / 2, headLen),
+    rot(-tailWidth / 2, headLen + tailLen),
+    rot(tailWidth / 2, headLen + tailLen),
+    rot(tailWidth / 2, headLen),
+    rot(headWidth / 2, headLen),
+  ];
+
+  // Preenchimento da seta
   ctx.fillStyle = 'rgba(239,68,68,1)';
   ctx.beginPath();
-  ctx.arc(x, y, Math.max(4, Math.round(r * 0.2)), 0, Math.PI * 2);
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i++) {
+    ctx.lineTo(points[i].x, points[i].y);
+  }
+  ctx.closePath();
   ctx.fill();
 
-  // Cruz central vermelha
-  const crossLen = Math.max(10, Math.round(r * 0.9));
-  const crossWidth = Math.max(2, Math.round(r * 0.16));
-  ctx.strokeStyle = 'rgba(239,68,68,1)';
-  ctx.lineWidth = crossWidth;
-  ctx.beginPath();
-  // linha horizontal
-  ctx.moveTo(x - crossLen, y);
-  ctx.lineTo(x + crossLen, y);
-  // linha vertical
-  ctx.moveTo(x, y - crossLen);
-  ctx.lineTo(x, y + crossLen);
+  // Contorno para legibilidade
+  ctx.strokeStyle = 'rgba(220,38,38,1)';
+  ctx.lineWidth = Math.max(2, Math.round(r * 0.16));
+  ctx.lineJoin = 'round';
   ctx.stroke();
 }
 
@@ -594,58 +587,18 @@ function toTitleCase(s) {
   return s;
 }
 
-function dataUrlToUint8Array(dataUrl) {
-  const parts = String(dataUrl).split(',');
-  if (parts.length < 2) return new Uint8Array();
-  const byteString = atob(parts[1]);
-  const len = byteString.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) bytes[i] = byteString.charCodeAt(i);
-  return bytes;
-}
+// Removido: utilitários de imagem para DOCX
 
-function getImageDimensions(dataUrl) {
-  return new Promise((resolve) => {
-    try {
-      const img = new Image();
-      img.onload = () => resolve({ width: img.naturalWidth || img.width || 800, height: img.naturalHeight || img.height || 600 });
-      img.onerror = () => resolve({ width: 800, height: 600 });
-      img.src = dataUrl;
-    } catch {
-      resolve({ width: 800, height: 600 });
-    }
-  });
-}
-
-async function exportDocx() {
+function getBackendBase() {
   try {
-    const resp = await fetch('/export-docx', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ steps }),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const blob = await resp.blob();
-    // Extrair nome do arquivo do header, se disponível
-    const cd = resp.headers.get('content-disposition') || '';
-    const match = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i.exec(cd);
-    const filename = match ? match[1].replace(/['"]/g, '') : `homolog_export_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.docx`;
-    if (window.saveAs) {
-      window.saveAs(blob, filename);
-    } else {
-      // Fallback manual
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = filename; a.click();
-      URL.revokeObjectURL(url);
-    }
-    showToast('DOCX exportado');
-  } catch (e) {
-    console.warn('Falha ao exportar DOCX via backend:', e);
-    showToast('Não foi possível gerar o DOCX');
+    const origin = window.location.origin || '';
+    if (origin.includes('localhost:8010') || origin.includes('127.0.0.1:8010')) return '';
+    return 'http://localhost:8010';
+  } catch {
+    return 'http://localhost:8010';
   }
 }
 
-if (els.exportDocx) {
-  els.exportDocx.addEventListener('click', exportDocx);
-}
+// Removido: exportação DOCX via backend
+
+// Removido: listener de botão Exportar DOCX
