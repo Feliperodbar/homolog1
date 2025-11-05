@@ -62,9 +62,7 @@ async function startCapture() {
     els.overlay.classList.remove('hidden');
     setStatus('Capturando tela');
     showToast('Captura iniciada');
-    if (els.videoWrapper?.requestFullscreen) {
-      await els.videoWrapper.requestFullscreen();
-    }
+    // Não entrar em fullscreen automaticamente ao iniciar captura
   } catch (err) {
     console.error('Erro ao iniciar captura:', err);
     showToast('Não foi possível iniciar a captura');
