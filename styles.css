@@ -278,20 +278,17 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   width: 8px;
 }
 
-.steps-list::-webkit-scrollbar-track,
-.log-list::-webkit-scrollbar-track {
+.steps-list::-webkit-scrollbar-track {
   background: transparent;
   border-radius: 4px;
 }
 
-.steps-list::-webkit-scrollbar-thumb,
-.log-list::-webkit-scrollbar-thumb {
+.steps-list::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 4px;
 }
 
-.steps-list::-webkit-scrollbar-thumb:hover,
-.log-list::-webkit-scrollbar-thumb:hover {
+.steps-list::-webkit-scrollbar-thumb:hover {
   background: var(--primary-700);
 }
 

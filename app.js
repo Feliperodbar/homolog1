@@ -11,7 +11,6 @@ const els = {
   videoWrapper: document.getElementById('videoWrapper'),
   overlay: document.getElementById('videoOverlay'),
   steps: document.getElementById('stepsList'),
-  logs: document.getElementById('logsList'),
   toast: document.getElementById('toast'),
   imageModal: document.getElementById('imageModal'),
   modalImage: document.getElementById('modalImage'),
@@ -21,10 +20,9 @@ const els = {
 
 let mediaStream = null;
 let steps = [];
-let logs = [];
 
 const STORAGE_KEY = 'homolog_steps_v1';
-const LOGS_STORAGE_KEY = 'homolog_logs_v1';
+// Removido: LOGS_STORAGE_KEY
 
 // Detecção de movimento reduzido: reflete preferência no documento
 const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -318,10 +316,7 @@ function downloadHtml() {
       </article>`;
     }).join('');
 
-    const logsHtml = logs.length ? `<section>
-      <h2 style="font-family:system-ui,Segoe UI,Roboto;color:#111827">Logs</h2>
-      <ul style="padding-left:18px;color:#1f2937">${logs.map(l => `<li>${escapeHtml(l.message)} — ${escapeHtml(new Date(l.ts).toLocaleTimeString())}</li>`).join('')}</ul>
-    </section>` : '';
+    // Removido: seção de logs
 
     const doc = `<!doctype html><html lang="pt-BR"><head>
       <meta charset="utf-8">
@@ -339,7 +334,7 @@ function downloadHtml() {
         <h2 style="font-family:system-ui,Segoe UI,Roboto;color:#111827">Passos</h2>
         ${stepsHtml || '<p>Nenhum passo.</p>'}
       </section>
-      ${logsHtml}
+      
     </body></html>`;
 
     const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
@@ -389,9 +384,8 @@ els.video.addEventListener('click', (e) => {
 });
 // Inicialização
 load();
-loadLogs();
 renderSteps();
-renderLogs();
+// Removido: inicialização de logs
 
 function toggleFullscreenCapture() {
   try {
@@ -517,9 +511,9 @@ async function addStepWithHighlight(coords) {
     updateStep(id, 'title', refinedTitle);
     updateStep(id, 'tag', label);
     renderSteps();
-    addLog(`Clicado em ${label}`);
+    showToast(`Clicado em ${label}`);
   } else {
-    addLog(defaultTitle);
+    showToast(defaultTitle);
   }
 }
 
@@ -606,22 +600,11 @@ function sanitizeLabel(label) {
   return trimmed;
 }
 
-function toTitleCase(s) {
-  // Mantemos o texto como está; função deixada por compatibilidade
-  return s;
-}
+// Removido: toTitleCase (não utilizado)
 
 // Removido: utilitários de imagem para DOCX
 
-function getBackendBase() {
-  try {
-    const origin = window.location.origin || '';
-    if (origin.includes('localhost:8010') || origin.includes('127.0.0.1:8010')) return '';
-    return 'http://localhost:8010';
-  } catch {
-    return 'http://localhost:8010';
-  }
-}
+// Removido: getBackendBase (não utilizado)
 
 // Removido: exportação DOCX via backend
 
@@ -650,5 +633,34 @@ async function exportDocxRedocx() {
   } catch (e) {
     console.warn('Falha ao exportar DOCX (redocx):', e);
     showToast('Servidor redocx offline? Rode: npm run docx-server', 4000);
+  }
+}
+
+// Baixar ZIP de passos via Flask
+async function downloadStepsZip() {
+  try {
+    const origin = window.location.origin || '';
+    const base = (origin.includes('localhost:8010') || origin.includes('127.0.0.1:8010')) ? '' : 'http://localhost:8010';
+    const resp = await fetch(`${base}/download-steps-zip`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ steps }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    const cd = resp.headers.get('content-disposition') || '';
+    const m = cd.match(/filename="?([^";]+)"?/i);
+    const filename = m ? m[1] : `passos_${Date.now()}.zip`;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    showToast('ZIP baixado');
+  } catch (e) {
+    console.warn('Falha ao baixar ZIP:', e);
+    showToast('Não foi possível gerar o ZIP');
   }
 }
