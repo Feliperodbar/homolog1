@@ -619,126 +619,29 @@ function getImageDimensions(dataUrl) {
 
 async function exportDocx() {
   try {
-    if (!Document || !Packer || !Paragraph || !TextRun || !ImageRun || !Table || !TableRow || !TableCell || !HeadingLevel || !AlignmentType || !saveAs) {
-      showToast('Bibliotecas para DOCX indisponíveis');
-      console.warn('docx/FileSaver não carregados:', { Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell, HeadingLevel, AlignmentType, saveAs });
-      return;
-    }
-    const now = new Date();
-    const title = 'Homolog — Relatório de Captura';
-    const subtitle = `Gerado em ${now.toLocaleString()}`;
-
-    const children = [];
-    children.push(new Paragraph({ text: title, heading: HeadingLevel.TITLE }));
-    children.push(new Paragraph({ text: subtitle }));
-    children.push(new Paragraph({ text: `Total de passos: ${steps.length}` }));
-    children.push(new Paragraph({ text: `Total de logs: ${logs.length}` }));
-    children.push(new Paragraph({ text: '' }));
-
-    // Tabela de metadados dos passos
-    const tableHeader = new TableRow({
-      children: [
-        new TableCell({ children: [new Paragraph({ text: 'Passo', style: "Strong" })] }),
-        new TableCell({ children: [new Paragraph({ text: 'Título', style: "Strong" })] }),
-        new TableCell({ children: [new Paragraph({ text: 'Tag', style: "Strong" })] }),
-        new TableCell({ children: [new Paragraph({ text: 'Descrição', style: "Strong" })] }),
-      ],
+    const resp = await fetch('/export-docx', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ steps }),
     });
-    const tableRows = [tableHeader];
-    steps.forEach((s, idx) => {
-      tableRows.push(new TableRow({
-        children: [
-          new TableCell({ children: [new Paragraph(String(idx + 1))] }),
-          new TableCell({ children: [new Paragraph(String(s.title || ''))] }),
-          new TableCell({ children: [new Paragraph(String(s.tag || ''))] }),
-          new TableCell({ children: [new Paragraph(String(s.description || ''))] }),
-        ],
-      }));
-    });
-    const stepsTable = new Table({ rows: tableRows });
-    children.push(new Paragraph({ text: 'Resumo dos passos', heading: HeadingLevel.HEADING_2 }));
-    children.push(steps.length ? stepsTable : new Paragraph({ text: 'Nenhum passo.' }));
-    children.push(new Paragraph({ text: '' }));
-    children.push(new Paragraph({ text: 'Detalhes dos passos', heading: HeadingLevel.HEADING_2 }));
-
-    // Imagens dos passos com títulos (dimensionadas)
-    for (let i = 0; i < steps.length; i++) {
-      const s = steps[i];
-      const t = s.title || `Passo`;
-      children.push(
-        new Paragraph({
-          children: [new TextRun({ text: t, bold: true })],
-          numbering: { reference: 'steps-numbering', level: 0 },
-        })
-      );
-      if (s.imageDataUrl) {
-        const dims = await getImageDimensions(s.imageDataUrl);
-        const maxW = 640;
-        const scale = dims.width > maxW ? maxW / dims.width : 1;
-        const w = Math.round(dims.width * scale);
-        const h = Math.round(dims.height * scale);
-        const bytes = dataUrlToUint8Array(s.imageDataUrl);
-        children.push(new Paragraph({
-            children: [
-                new ImageRun({
-                    data: bytes,
-                    transformation: {
-                        width: w,
-                        height: h,
-                    },
-                }),
-            ],
-        }));
-      }
-      if (s.description) children.push(new Paragraph({ text: s.description }));
-      if (s.tag) children.push(new Paragraph({ text: `Tag: ${s.tag}` }));
-      children.push(new Paragraph({ text: '' }));
-    }
-
-    // Logs
-    children.push(new Paragraph({ text: 'Logs de cliques', heading: HeadingLevel.HEADING_2 }));
-    if (logs.length) {
-      logs.forEach(l => {
-        children.push(new Paragraph({ children: [new TextRun({ text: `• ${l.message} — ${new Date(l.ts).toLocaleTimeString()}` })] }));
-      });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    // Extrair nome do arquivo do header, se disponível
+    const cd = resp.headers.get('content-disposition') || '';
+    const match = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i.exec(cd);
+    const filename = match ? match[1].replace(/['"]/g, '') : `homolog_export_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.docx`;
+    if (window.saveAs) {
+      window.saveAs(blob, filename);
     } else {
-      children.push(new Paragraph({ text: 'Nenhum log.' }));
+      // Fallback manual
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
     }
-
-    const doc = new Document({
-      styles: {
-        paragraphStyles: [
-          {
-            id: 'Strong',
-            name: 'Strong',
-            basedOn: 'Normal',
-            run: { bold: true },
-          },
-        ],
-      },
-      numbering: {
-        config: [
-          {
-            reference: 'steps-numbering',
-            levels: [
-              {
-                level: 0,
-                format: 'decimal',
-                text: '%1.',
-                alignment: AlignmentType.LEFT,
-              },
-            ],
-          },
-        ],
-      },
-      sections: [{ children }],
-    });
-
-    const blob = await Packer.toBlob(doc);
-    saveAs(blob, `homolog_relatorio_${now.toISOString().slice(0,19).replace(/[:T]/g,'-')}.docx`);
     showToast('DOCX exportado');
   } catch (e) {
-    console.warn('Falha ao exportar DOCX:', e);
+    console.warn('Falha ao exportar DOCX via backend:', e);
     showToast('Não foi possível gerar o DOCX');
   }
 }
