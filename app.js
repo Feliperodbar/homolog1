@@ -624,10 +624,10 @@ async function exportDocx() {
     // Tabela de metadados dos passos
     const tableHeader = new TableRow({
       children: [
-        new TableCell({ children: [new Paragraph({ text: 'Passo', style: "strong" })] }),
-        new TableCell({ children: [new Paragraph({ text: 'Título', style: "strong" })] }),
-        new TableCell({ children: [new Paragraph({ text: 'Tag', style: "strong" })] }),
-        new TableCell({ children: [new Paragraph({ text: 'Descrição', style: "strong" })] }),
+        new TableCell({ children: [new Paragraph({ text: 'Passo', style: "Strong" })] }),
+        new TableCell({ children: [new Paragraph({ text: 'Título', style: "Strong" })] }),
+        new TableCell({ children: [new Paragraph({ text: 'Tag', style: "Strong" })] }),
+        new TableCell({ children: [new Paragraph({ text: 'Descrição', style: "Strong" })] }),
       ],
     });
     const tableRows = [tableHeader];
@@ -641,7 +641,7 @@ async function exportDocx() {
         ],
       }));
     });
-    const stepsTable = new Table({ rows: tableRows, width: { size: 100, type: 'pct' } });
+    const stepsTable = new Table({ rows: tableRows });
     children.push(new Paragraph({ text: 'Resumo dos passos', heading: HeadingLevel.HEADING_2 }));
     children.push(steps.length ? stepsTable : new Paragraph({ text: 'Nenhum passo.' }));
     children.push(new Paragraph({ text: '' }));
@@ -693,13 +693,14 @@ async function exportDocx() {
 
     const doc = new Document({
       styles: {
-        paragraph: {
-            strong: {
-                run: {
-                    bold: true,
-                },
-            },
-        },
+        paragraphStyles: [
+          {
+            id: 'Strong',
+            name: 'Strong',
+            basedOn: 'Normal',
+            run: { bold: true },
+          },
+        ],
       },
       numbering: {
         config: [
