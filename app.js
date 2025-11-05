@@ -17,20 +17,10 @@ const els = {
   status: document.getElementById('statusText'),
 };
 
+
 // Integração com bibliotecas globais (docx e FileSaver)
-const docxLib = window.docx || {};
-const {
-  Document,
-  Packer,
-  Paragraph,
-  HeadingLevel,
-  AlignmentType,
-  ImageRun,
-  TextRun,
-  Table,
-  TableRow,
-  TableCell,
-} = docxLib;
+const docx = window.docx || {};
+const { Document, Packer, Paragraph, TextRun } = docx; // conforme solicitado
 const saveAs = window.saveAs || undefined;
 
 let mediaStream = null;
@@ -618,6 +608,62 @@ function getImageDimensions(dataUrl) {
 }
 
 async function exportDocx() {
+  // Tenta primeiro gerar no front-end com docx; se indisponível, usa backend
+  try {
+    if (Document && Packer && Paragraph && TextRun && saveAs) {
+      const now = new Date();
+      const children = [];
+      children.push(new Paragraph({ children: [new TextRun({ text: 'Homolog — Relatório de Captura', bold: true })] }));
+      children.push(new Paragraph({ text: `Gerado em ${now.toLocaleString()}` }));
+      children.push(new Paragraph({ text: `Total de passos: ${steps.length}` }));
+      children.push(new Paragraph({ text: `Total de logs: ${logs.length}` }));
+      children.push(new Paragraph({ text: '' }));
+
+      for (let i = 0; i < steps.length; i++) {
+        const s = steps[i];
+        const t = s.title || `Passo`;
+        children.push(new Paragraph({ children: [new TextRun({ text: `${i + 1}. ${t}`, bold: true })] }));
+        if (s.imageDataUrl) {
+          const dims = await getImageDimensions(s.imageDataUrl);
+          const maxW = 640;
+          const scale = dims.width > maxW ? maxW / dims.width : 1;
+          const w = Math.round(dims.width * scale);
+          const h = Math.round(dims.height * scale);
+          const bytes = dataUrlToUint8Array(s.imageDataUrl);
+          children.push(new Paragraph({
+            children: [
+              new docx.ImageRun({
+                data: bytes,
+                transformation: { width: w, height: h },
+              }),
+            ],
+          }));
+        }
+        if (s.description) children.push(new Paragraph({ text: s.description }));
+        if (s.tag) children.push(new Paragraph({ text: `Tag: ${s.tag}` }));
+        children.push(new Paragraph({ text: '' }));
+      }
+
+      children.push(new Paragraph({ children: [new TextRun({ text: 'Logs de cliques', bold: true })] }));
+      if (logs.length) {
+        logs.forEach(l => {
+          children.push(new Paragraph({ text: `• ${l.message} — ${new Date(l.ts).toLocaleTimeString()}` }));
+        });
+      } else {
+        children.push(new Paragraph({ text: 'Nenhum log.' }));
+      }
+
+      const doc = new Document({ sections: [{ children }] });
+      const blob = await Packer.toBlob(doc);
+      saveAs(blob, `homolog_relatorio_${now.toISOString().slice(0,19).replace(/[:T]/g,'-')}.docx`);
+      showToast('DOCX exportado');
+      return;
+    }
+  } catch (e) {
+    console.warn('Falha ao exportar DOCX no front:', e);
+  }
+
+  // Fallback para backend
   try {
     const resp = await fetch('/export-docx', {
       method: 'POST',
@@ -626,14 +672,12 @@ async function exportDocx() {
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const blob = await resp.blob();
-    // Extrair nome do arquivo do header, se disponível
     const cd = resp.headers.get('content-disposition') || '';
     const match = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/i.exec(cd);
     const filename = match ? match[1].replace(/['"]/g, '') : `homolog_export_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.docx`;
     if (window.saveAs) {
       window.saveAs(blob, filename);
     } else {
-      // Fallback manual
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url; a.download = filename; a.click();
