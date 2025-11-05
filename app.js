@@ -3,6 +3,8 @@ const els = {
   stop: document.getElementById('stopCaptureBtn'),
   add: document.getElementById('addStepBtn'),
   toggleExpand: document.getElementById('toggleExpandBtn'),
+  exportDocx: document.getElementById('exportDocxBtn'),
+  downloadZip: document.getElementById('downloadZipBtn'),
   downloadHtml: document.getElementById('downloadHtmlBtn'),
   clear: document.getElementById('clearStepsBtn'),
   video: document.getElementById('screenVideo'),
@@ -345,6 +347,8 @@ if (els.toggleExpand) {
   els.toggleExpand.addEventListener('click', toggleFullscreenCapture);
   document.addEventListener('fullscreenchange', updateExpandButtonLabel);
 }
+if (els.exportDocx) { els.exportDocx.addEventListener('click', exportDocxRedocx); }
+if (els.downloadZip) { els.downloadZip.addEventListener('click', downloadStepsZip); }
 // Removido: copiar/baixar Markdown
 // Removido: botão de baixar HTML
 els.clear.addEventListener('click', () => {
@@ -409,23 +413,23 @@ function closeImageModal() {
   els.imageModal.setAttribute('aria-hidden', 'true');
   try { if (lastFocusedEl && typeof lastFocusedEl.focus === 'function') lastFocusedEl.focus(); } catch {}
 }
-function drawPointerHighlight(ctx, x, y, baseRadius = 22) {
+function drawPointerHighlight(ctx, x, y, baseRadius = 18) {
   const r = baseRadius;
   // Brilho vermelho ao redor do tip
-  const glow = ctx.createRadialGradient(x, y, r * 0.4, x, y, r * 1.8);
+  const glow = ctx.createRadialGradient(x, y, r * 0.35, x, y, r * 1.6);
   glow.addColorStop(0, 'rgba(239,68,68,0.35)');
   glow.addColorStop(1, 'rgba(239,68,68,0)');
   ctx.fillStyle = glow;
   ctx.beginPath();
-  ctx.arc(x, y, r * 1.8, 0, Math.PI * 2);
+  ctx.arc(x, y, r * 1.6, 0, Math.PI * 2);
   ctx.fill();
 
   // Desenhar seta vermelha (orientada a -45°; ponta em x,y)
-  const size = r * 2.2;
-  const headLen = size * 0.6;
-  const headWidth = size * 0.55;
-  const tailLen = size * 1.0;
-  const tailWidth = Math.max(3, Math.round(size * 0.16));
+  const size = r * 1.7; // menor
+  const headLen = size * 0.58;
+  const headWidth = size * 0.50;
+  const tailLen = size * 0.9;
+  const tailWidth = Math.max(2, Math.round(size * 0.14));
   const angle = -Math.PI / 4; // -45 graus
   const cos = Math.cos(angle), sin = Math.sin(angle);
   const rot = (px, py) => ({ x: x + px * cos - py * sin, y: y + px * sin + py * cos });
