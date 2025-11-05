@@ -33,15 +33,9 @@ def download_steps_zip():
     data = request.get_json(silent=True) or {}
     steps = data.get('steps', [])
 
-    # Monta ZIP em memória com steps.json e imagens
+    # Monta ZIP em memória contendo apenas as imagens dos passos
     out = io.BytesIO()
     with zipfile.ZipFile(out, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
-        try:
-            import json
-            zf.writestr('steps.json', json.dumps(steps, ensure_ascii=False, indent=2))
-        except Exception:
-            zf.writestr('steps.json', '[]')
-
         for i, s in enumerate(steps, 1):
             img_data_url = s.get('imageDataUrl')
             if not img_data_url:
@@ -51,8 +45,8 @@ def download_steps_zip():
                 img_bytes = base64.b64decode(b64)
                 zf.writestr(f'images/step_{i}.png', img_bytes)
             except Exception:
-                # Se falhar, coloca um marcador vazio
-                zf.writestr(f'images/step_{i}.txt', 'Imagem indisponível')
+                # Se falhar ao decodificar, ignora (não adiciona arquivos extras)
+                continue
 
     out.seek(0)
     filename = f"passos_{int(time.time())}.zip"
