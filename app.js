@@ -170,16 +170,27 @@ function removeLog(id) {
   persistLogs();
 }
 
-function addStep(img, title, description) {
-  const newStep = {
-    id: nanoid(),
-    img: img || '',
-    title: title || `Passo #${steps.length + 1} — ${new Date().toLocaleString('pt-BR')}`,
-    description: description || '',
+function addStep() {
+  if (!mediaStream) {
+    showToast('Inicie a captura para criar passos');
+    return;
+  }
+  const image = captureScreenshot();
+  if (!image) {
+    showToast('Não foi possível capturar a tela');
+    return;
+  }
+  const step = {
+    id: `step_${Date.now()}`,
+    title: `Passo #${steps.length + 1} — ${new Date().toLocaleString('pt-BR')}`,
+    description: '',
+    imageDataUrl: image,
+    createdAt: Date.now(),
   };
-  steps.push(newStep);
-  persistSteps();
+  steps.push(step);
   renderSteps();
+  persist();
+  showToast('Passo adicionado');
 }
 
 function removeStep(id) {
