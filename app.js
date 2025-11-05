@@ -59,6 +59,7 @@ async function startCapture() {
     };
 
     els.video.srcObject = mediaStream;
+    await ensureVideoReady();
     els.overlay.classList.remove('hidden');
     setStatus('Capturando tela');
     showToast('Captura iniciada');
@@ -102,6 +103,14 @@ function captureScreenshot(highlight) {
   }
   const dataUrl = canvas.toDataURL('image/png', 0.9);
   return dataUrl;
+}
+
+async function ensureVideoReady() {
+  const v = els.video;
+  if (!v) return;
+  if (v.readyState >= 2 && v.videoWidth && v.videoHeight) return;
+  await new Promise((resolve) => v.addEventListener('loadedmetadata', resolve, { once: true }));
+  try { await v.play(); } catch {}
 }
 
 function persist() {
@@ -170,11 +179,12 @@ function removeLog(id) {
   persistLogs();
 }
 
-function addStep() {
+async function addStep() {
   if (!mediaStream) {
     showToast('Inicie a captura para criar passos');
     return;
   }
+  await ensureVideoReady();
   const image = captureScreenshot();
   if (!image) {
     showToast('Não foi possível capturar a tela');
@@ -482,6 +492,7 @@ function getVideoFrameCoordsFromClient(clientX, clientY) {
 }
 
 async function addStepWithHighlight(coords) {
+  await ensureVideoReady();
   const image = captureScreenshot(coords);
   if (!image) return;
   const id = `step_${Date.now()}`;
