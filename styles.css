@@ -1,16 +1,16 @@
 :root {
-  /* Tema: Energia sustentável + tecnologia */
-  --bg: #0b1210;          /* fundo floresta escuro */
-  --panel: #0f1a16;       /* painel verde profundo */
-  --text: #e6f4ea;        /* texto verde pálido */
-  --muted: #a7c3b8;       /* texto secundário */
-  --primary: #16a34a;     /* verde energia */
-  --primary-700: #0f766e; /* teal tecnológico */
-  --accent: #f59e0b;      /* âmbar solar */
-  --accent-700: #b45309;  /* âmbar intenso */
-  --brand-green: #22c55e; /* verde vibrante */
+  /* Tema: Azul tecnológico */
+  --bg: #0b1220;          /* fundo azul escuro */
+  --panel: #0f1b2a;       /* painel azul profundo */
+  --text: #e6f0ff;        /* texto azul pálido */
+  --muted: #a7b6d9;       /* texto secundário azulado */
+  --primary: #2563eb;     /* azul primário */
+  --primary-700: #1d4ed8; /* azul intenso */
+  --accent: #60a5fa;      /* azul claro de destaque */
+  --accent-700: #1e40af;  /* azul escuro de destaque */
+  --brand-green: #3b82f6; /* cor de marca (azul) */
   --danger: #ef4444;
-  --border: #143026;      /* borda verde escura */
+  --border: #1e3a5f;      /* borda azul escura */
 }
 
 * { box-sizing: border-box; }
@@ -20,9 +20,9 @@ body {
   font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica Neue, Arial, "Apple Color Emoji", "Segoe UI Emoji";
   color: var(--text);
   background:
-    radial-gradient(1200px 800px at 80% 0%, rgba(34,197,94,0.15), transparent 60%),
-    radial-gradient(900px 600px at 0% 100%, rgba(13,148,136,0.14), transparent 60%),
-    linear-gradient(180deg, #09110d 0%, var(--bg) 100%);
+    radial-gradient(1200px 800px at 80% 0%, rgba(59,130,246,0.15), transparent 60%),
+    radial-gradient(900px 600px at 0% 100%, rgba(37,99,235,0.14), transparent 60%),
+    linear-gradient(180deg, #0a1322 0%, var(--bg) 100%);
 }
 
 .app-header {
@@ -38,7 +38,7 @@ body {
   z-index: 20;
 }
 .brand { display: flex; align-items: center; gap: 10px; }
-.brand-icon { width: 28px; height: 28px; filter: drop-shadow(0 2px 6px rgba(34,197,94,0.25)); animation: ecoGlow 6s ease-in-out infinite; transition: transform .2s ease; }
+.brand-icon { width: 28px; height: 28px; filter: drop-shadow(0 2px 6px rgba(59,130,246,0.25)); animation: ecoGlow 6s ease-in-out infinite; transition: transform .2s ease; }
 .brand h1 { margin: 0; font-size: 18px; font-weight: 700; color: var(--brand-green); }
 .brand-text { display: flex; flex-direction: column; }
 .brand .tagline { margin: 0; font-size: 12px; color: var(--muted); }
@@ -54,7 +54,7 @@ button {
   font-size: 14px;
   transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
 }
-button:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 6px 18px rgba(34,197,94,0.12); }
+button:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 6px 18px rgba(59,130,246,0.12); }
 .status-pill {
   align-self: center;
   display: inline-flex;
@@ -62,7 +62,7 @@ button:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow
   gap: 6px;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(34, 197, 94, 0.18);
+  background: rgba(59, 130, 246, 0.18);
   border: 1px solid var(--border);
   color: var(--brand-green);
   font-size: 12px;
@@ -151,7 +151,7 @@ button:hover { filter: brightness(1.08); transform: translateY(-1px); box-shadow
   background: #0e1714;
   transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
 }
-.step-card:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(13,148,136,0.18); border-color: #185a46; }
+.step-card:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(59,130,246,0.18); border-color: #1e3a8a; }
 .step-thumb {
   width: 100%;
   height: 150px;
@@ -194,7 +194,7 @@ textarea { min-height: 68px; resize: vertical; }
   bottom: 18px;
   left: 50%;
   transform: translateX(-50%);
-  background: #162033;
+  background: #0f1c34;
   color: var(--text);
   border: 1px solid var(--border);
   padding: 10px 14px;
@@ -219,9 +219,9 @@ textarea { min-height: 68px; resize: vertical; }
 }
 
 @keyframes ecoGlow {
-  0% { filter: drop-shadow(0 2px 6px rgba(34,197,94,0.18)); }
-  50% { filter: drop-shadow(0 6px 18px rgba(34,197,94,0.35)); }
-  100% { filter: drop-shadow(0 2px 6px rgba(34,197,94,0.18)); }
+  0% { filter: drop-shadow(0 2px 6px rgba(59,130,246,0.18)); }
+  50% { filter: drop-shadow(0 6px 18px rgba(59,130,246,0.35)); }
+  100% { filter: drop-shadow(0 2px 6px rgba(59,130,246,0.18)); }
 }
 
 @media (max-width: 980px) {
