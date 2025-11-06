@@ -4,6 +4,7 @@ const els = {
   add: document.getElementById('addStepBtn'),
   toggleExpand: document.getElementById('toggleExpandBtn'),
   downloadHtml: document.getElementById('downloadHtmlBtn'),
+  downloadDocx: document.getElementById('downloadDocxBtn'),
   clear: document.getElementById('clearStepsBtn'),
   video: document.getElementById('screenVideo'),
   videoWrapper: document.getElementById('videoWrapper'),
@@ -297,6 +298,138 @@ function escapeHtml(str) {
     .replaceAll("'", '&#039;');
 }
 
+function buildExportHtml() {
+  const now = new Date();
+  const title = `Homolog — Captura ${now.toLocaleString()}`;
+  const CONTENT_WIDTH_PX = 624; // ~6.5in a 96dpi (ajuste para caber na página)
+  const stepsHtml = steps.map((s, i) => {
+    const t = escapeHtml(s.title || `Passo ${i + 1}`);
+    const d = escapeHtml(s.description || '');
+    const tag = escapeHtml(s.tag || '');
+    const img = s.imageDataUrl || '';
+    return `<article style="border:1px solid #d1d5db;border-radius:6px;padding:10px;background:#fafafa;margin:10px 0;">
+      <header>
+        <h3 style="margin:0 0 6px;color:#111827;font-family:system-ui,Segoe UI,Roboto">${t}</h3>
+        ${tag ? `<p style="margin:0 0 8px;color:#374151;font-size:12px">Tag: ${tag}</p>` : ''}
+      </header>
+      ${img ? `<img src="${img}" alt="${t}" width="${CONTENT_WIDTH_PX}" style="width:100%;height:auto;border:1px solid #e5e7eb;border-radius:6px">` : ''}
+      ${d ? `<p style="margin:8px 0;color:#1f2937">${d}</p>` : ''}
+    </article>`;
+  }).join('');
+
+  const doc = `<!doctype html><html lang="pt-BR"><head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${escapeHtml(title)}</title>
+    <style>
+      body{font-family:ui-sans-serif,system-ui,Segoe UI,Roboto;background:#ffffff;color:#111827;margin:20px}
+      .docx-container{width:${CONTENT_WIDTH_PX}px;margin:0 auto}
+      h1{font-size:20px;margin:0 0 12px}
+      .hint{color:#6b7280;font-size:12px;margin-bottom:12px}
+    </style>
+  </head><body>
+    <div class="docx-container">
+      <h1>${escapeHtml(title)}</h1>
+      <p class="hint">Arquivo gerado pelo Homolog — contém imagens incorporadas.</p>
+      <section>
+        <h2 style="font-family:system-ui,Segoe UI,Roboto;color:#111827">Passos</h2>
+        ${stepsHtml || '<p>Nenhum passo.</p>'}
+      </section>
+    </div>
+    </body></html>`;
+  return doc;
+}
+
+async function dataUrlToArrayBuffer(dataUrl) {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  return await blob.arrayBuffer();
+}
+
+function getImageDimensions(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve({ width: img.naturalWidth || img.width || 1920, height: img.naturalHeight || img.height || 1080 });
+    img.onerror = () => resolve({ width: 1920, height: 1080 });
+    img.src = dataUrl;
+  });
+}
+
+async function downloadDocxEditable() {
+  try {
+    if (!window.docx) {
+      // fallback para HTML->DOCX se docx não estiver disponível
+      return downloadDocx();
+    }
+    const { Document, Packer, Paragraph, TextRun, ImageRun } = window.docx;
+    const now = new Date();
+    const title = `Homolog — Captura ${now.toLocaleString()}`;
+    const CONTENT_WIDTH_PX = 624; // 6.5in a 96dpi
+
+    const children = [];
+    // Título
+    children.push(new Paragraph({
+      children: [new TextRun({ text: title, bold: true, size: 28 })],
+    }));
+
+    if (!steps.length) {
+      children.push(new Paragraph({ children: [new TextRun({ text: 'Nenhum passo.', size: 22 })] }));
+    }
+
+    for (let i = 0; i < steps.length; i++) {
+      const s = steps[i];
+      const header = s.title || `Passo ${i + 1}`;
+      const tag = s.tag || '';
+      const desc = s.description || '';
+
+      children.push(new Paragraph({ spacing: { before: 240, after: 120 }, children: [
+        new TextRun({ text: header, bold: true, size: 26 }),
+      ] }));
+      if (tag) {
+        children.push(new Paragraph({ children: [ new TextRun({ text: `Tag: ${tag}`, italics: true, size: 20 }) ] }));
+      }
+
+      if (s.imageDataUrl) {
+        const dims = await getImageDimensions(s.imageDataUrl);
+        const ratio = dims.width > 0 ? dims.height / dims.width : 1;
+        const targetW = CONTENT_WIDTH_PX;
+        const targetH = Math.max(1, Math.round(targetW * ratio));
+        const buffer = await dataUrlToArrayBuffer(s.imageDataUrl);
+        children.push(new Paragraph({ children: [ new ImageRun({ data: buffer, transformation: { width: targetW, height: targetH } }) ] }));
+      }
+
+      if (desc) {
+        children.push(new Paragraph({ spacing: { before: 120 }, children: [ new TextRun({ text: desc, size: 22 }) ] }));
+      }
+    }
+
+    const doc = new Document({
+      sections: [
+        {
+          properties: {
+            page: {
+              margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
+            },
+          },
+          children,
+        },
+      ],
+    });
+
+    const blob = await Packer.toBlob(doc);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `homolog_${now.toISOString().slice(0,19).replace(/[:T]/g,'-')}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+    showToast('DOCX baixado');
+  } catch (e) {
+    console.warn('Falha ao gerar DOCX editável:', e);
+    showToast('Não foi possível gerar o DOCX editável');
+  }
+}
 function downloadHtml() {
   try {
     const now = new Date();
@@ -357,6 +490,36 @@ els.stop.addEventListener('click', stopCapture);
 els.add.addEventListener('click', addStep);
 if (els.downloadHtml) { els.downloadHtml.addEventListener('click', downloadHtml); }
 // Removido: exportação DOCX
+function downloadDocx() {
+  try {
+    const html = buildExportHtml();
+    const now = new Date();
+    if (!window.htmlDocx || typeof window.htmlDocx.asBlob !== 'function') {
+      showToast('Biblioteca DOCX não carregada');
+      return;
+    }
+    const blob = window.htmlDocx.asBlob(html, { orientation: 'portrait' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `homolog_${now.toISOString().slice(0,19).replace(/[:T]/g,'-')}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+    showToast('DOCX baixado');
+  } catch (e) {
+    console.warn('Falha ao gerar DOCX:', e);
+    showToast('Não foi possível gerar o DOCX');
+  }
+}
+if (els.downloadDocx) { els.downloadDocx.addEventListener('click', () => {
+  // prioriza o gerador nativo e cai para HTML->DOCX se indisponível
+  if (window.docx) {
+    downloadDocxEditable();
+  } else {
+    downloadDocx();
+  }
+}); }
 if (els.toggleExpand) {
   els.toggleExpand.addEventListener('click', toggleFullscreenCapture);
   document.addEventListener('fullscreenchange', updateExpandButtonLabel);
