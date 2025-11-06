@@ -1,14 +1,14 @@
-import base64
-import io
-import time
 import os
-from flask import Flask, send_from_directory, request, send_file
+from flask import Flask, send_from_directory, request
 from flask_cors import CORS
-# Removido: geração de DOCX no backend
-import zipfile
+# Removido: geração e download de arquivos (DOCX/ZIP)
+import time
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 CORS(app)
+
+# Estado simples em memória para gatilho de criação de passo
+trigger_state = { 'ts': 0, 'x': None, 'y': None }
 
 
 @app.route('/')
@@ -26,36 +26,22 @@ def health():
     return {'status': 'ok'}
 
 
-# Removido: rota /export-docx
+# Removido: rotas de exportação (DOCX/ZIP)
 
-@app.route('/download-steps-zip', methods=['POST'])
-def download_steps_zip():
-    data = request.get_json(silent=True) or {}
-    steps = data.get('steps', [])
+@app.route('/trigger-add-step', methods=['POST'])
+def trigger_add_step():
+    global trigger_state
+    payload = request.get_json(silent=True) or {}
+    x = payload.get('x')
+    y = payload.get('y')
+    trigger_state['ts'] = int(time.time() * 1000)
+    trigger_state['x'] = x if isinstance(x, (int, float)) else None
+    trigger_state['y'] = y if isinstance(y, (int, float)) else None
+    return { 'ok': True, **trigger_state }
 
-    # Monta ZIP em memória contendo apenas as imagens dos passos
-    out = io.BytesIO()
-    with zipfile.ZipFile(out, mode='w', compression=zipfile.ZIP_DEFLATED) as zf:
-        for i, s in enumerate(steps, 1):
-            img_data_url = s.get('imageDataUrl')
-            if not img_data_url:
-                continue
-            try:
-                header, b64 = img_data_url.split(',', 1)
-                img_bytes = base64.b64decode(b64)
-                zf.writestr(f'images/step_{i}.png', img_bytes)
-            except Exception:
-                # Se falhar ao decodificar, ignora (não adiciona arquivos extras)
-                continue
-
-    out.seek(0)
-    filename = f"passos_{int(time.time())}.zip"
-    return send_file(
-        out,
-        mimetype='application/zip',
-        as_attachment=True,
-        download_name=filename,
-    )
+@app.route('/trigger-state', methods=['GET'])
+def trigger_state():
+    return trigger_state
 
 
 if __name__ == '__main__':

@@ -3,8 +3,6 @@ const els = {
   stop: document.getElementById('stopCaptureBtn'),
   add: document.getElementById('addStepBtn'),
   toggleExpand: document.getElementById('toggleExpandBtn'),
-  exportDocx: document.getElementById('exportDocxBtn'),
-  downloadZip: document.getElementById('downloadZipBtn'),
   downloadHtml: document.getElementById('downloadHtmlBtn'),
   clear: document.getElementById('clearStepsBtn'),
   video: document.getElementById('screenVideo'),
@@ -47,7 +45,7 @@ function setStatus(text) {
 async function startCapture() {
   try {
     mediaStream = await navigator.mediaDevices.getDisplayMedia({
-      video: { cursor: 'always' },
+      video: { cursor: 'always', preferCurrentTab: true },
       audio: false,
     });
 
@@ -61,6 +59,8 @@ async function startCapture() {
     els.overlay.classList.remove('hidden');
     setStatus('Capturando tela');
     showToast('Captura iniciada');
+    try { window.focus(); } catch {}
+    setTimeout(() => { try { window.focus(); } catch {} }, 50);
     // Não entrar em fullscreen automaticamente ao iniciar captura
   } catch (err) {
     console.error('Erro ao iniciar captura:', err);
@@ -361,8 +361,6 @@ if (els.toggleExpand) {
   els.toggleExpand.addEventListener('click', toggleFullscreenCapture);
   document.addEventListener('fullscreenchange', updateExpandButtonLabel);
 }
-if (els.exportDocx) { els.exportDocx.addEventListener('click', exportDocxRedocx); }
-if (els.downloadZip) { els.downloadZip.addEventListener('click', downloadStepsZip); }
 // Removido: copiar/baixar Markdown
 // Removido: botão de baixar HTML
 els.clear.addEventListener('click', () => {
@@ -385,6 +383,7 @@ els.video.addEventListener('click', (e) => {
 // Inicialização
 load();
 renderSteps();
+startTriggerPolling();
 // Removido: inicialização de logs
 
 function toggleFullscreenCapture() {
@@ -609,58 +608,37 @@ function sanitizeLabel(label) {
 // Removido: exportação DOCX via backend
 
 // Removido: listener de botão Exportar DOCX
-async function exportDocxRedocx() {
-  try {
-    const url = 'http://localhost:8020/export-docx';
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ steps }),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const blob = await resp.blob();
-    const cd = resp.headers.get('content-disposition') || '';
-    const m = cd.match(/filename="?([^";]+)"?/i);
-    const filename = m ? m[1] : `homolog_export_${Date.now()}.docx`;
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    showToast('DOCX exportado via redocx');
-  } catch (e) {
-    console.warn('Falha ao exportar DOCX (redocx):', e);
-    showToast('Servidor redocx offline? Rode: npm run docx-server', 4000);
-  }
-}
+// Removido: exportDocxRedocx
 
-// Baixar ZIP de passos via Flask
-async function downloadStepsZip() {
-  try {
-    const origin = window.location.origin || '';
-    const base = (origin.includes('localhost:8010') || origin.includes('127.0.0.1:8010')) ? '' : 'http://localhost:8010';
-    const resp = await fetch(`${base}/download-steps-zip`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ steps }),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const blob = await resp.blob();
-    const cd = resp.headers.get('content-disposition') || '';
-    const m = cd.match(/filename="?([^";]+)"?/i);
-    const filename = m ? m[1] : `passos_${Date.now()}.zip`;
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-    showToast('ZIP baixado');
-  } catch (e) {
-    console.warn('Falha ao baixar ZIP:', e);
-    showToast('Não foi possível gerar o ZIP');
-  }
+// Removido: Baixar ZIP de passos via Flask
+// Removido: downloadStepsZip
+// Polling de gatilhos via servidor Flask
+let lastTriggerTs = 0;
+function getBackendBase() {
+  const origin = window.location.origin || '';
+  return (origin.includes('localhost:8010') || origin.includes('127.0.0.1:8010')) ? '' : 'http://localhost:8010';
+}
+function startTriggerPolling() {
+  const base = getBackendBase();
+  setInterval(async () => {
+    try {
+      const resp = await fetch(`${base}/trigger-state`);
+      if (!resp.ok) return;
+      const data = await resp.json().catch(() => null);
+      const ts = (data && data.ts) || 0;
+      if (ts && ts > lastTriggerTs) {
+        lastTriggerTs = ts;
+        const x = (data && typeof data.x === 'number') ? data.x : null;
+        const y = (data && typeof data.y === 'number') ? data.y : null;
+        const track = mediaStream && mediaStream.getVideoTracks && mediaStream.getVideoTracks()[0];
+        const settings = track && typeof track.getSettings === 'function' ? track.getSettings() : {};
+        const surface = settings && settings.displaySurface; // 'monitor' | 'window' | 'browser'
+        if (surface === 'monitor' && x != null && y != null) {
+          await addStepWithHighlight({ x, y });
+        } else {
+          await addStep();
+        }
+      }
+    } catch {}
+  }, 1000);
 }
