@@ -24,8 +24,9 @@ const STORAGE_KEY = 'homolog_steps_v1';
 // Removido: LOGS_STORAGE_KEY
 
 // Configuração global de tamanho de imagem para exportações
-const EXPORT_IMAGE_WIDTH_CM = 16; // ajuste aqui para igualar ao seu documento Word
-const EXPORT_IMAGE_HEIGHT_CM = 10; // ajuste aqui para igualar ao seu documento Word
+// Ajustado para seguir o modelo do Word enviado (largura 20,23 cm; altura 9,28 cm)
+const EXPORT_IMAGE_WIDTH_CM = 20.23;
+const EXPORT_IMAGE_HEIGHT_CM = 9.28;
 
 // Detecção de movimento reduzido: reflete preferência no documento
 const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -318,7 +319,7 @@ function buildExportHtml() {
         <h3 style="margin:0 0 6px;color:#111827;font-family:system-ui,Segoe UI,Roboto">${t}</h3>
         ${tag ? `<p style="margin:0 0 8px;color:#374151;font-size:12px">Item clicado: ${tag}</p>` : ''}
       </header>
-      ${img ? `<img src="${img}" alt="${t}" style="width:${CONTENT_WIDTH_CM}cm;height:${IMAGE_HEIGHT_CM}cm;border:1px solid #e5e7eb;border-radius:6px;object-fit:contain">` : ''}
+      ${img ? `<img src="${img}" alt="${t}" style="display:block;margin:6px auto;width:${CONTENT_WIDTH_CM}cm;height:${IMAGE_HEIGHT_CM}cm;border:1px solid #e5e7eb;border-radius:6px;object-fit:contain">` : ''}
       ${d ? `<p style="margin:8px 0;color:#1f2937">${d}</p>` : ''}
     </article>`;
   }).join('');
@@ -398,6 +399,7 @@ async function downloadDocxEditable() {
       return downloadDocx();
     }
     const { Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell, Header } = window.docx;
+    const d = window.docx || {};
     const now = new Date();
     const title = `Homolog — Captura ${now.toLocaleString()}`;
     const IMAGE_WIDTH_CM = EXPORT_IMAGE_WIDTH_CM; // largura uniforme
@@ -457,9 +459,17 @@ async function downloadDocxEditable() {
         const buffer = await dataUrlToArrayBuffer(s.imageDataUrl);
         const targetW = cmToPx(IMAGE_WIDTH_CM);
         const targetH = cmToPx(IMAGE_HEIGHT_CM);
+        const floating = (d.HorizontalPositionRelativeFrom && d.HorizontalPositionAlign && d.VerticalPositionRelativeFrom && d.VerticalPositionAlign && d.TextWrappingType)
+          ? {
+              horizontalPosition: { relative: d.HorizontalPositionRelativeFrom.MARGIN, align: d.HorizontalPositionAlign.CENTER },
+              verticalPosition: { relative: d.VerticalPositionRelativeFrom.PARAGRAPH, align: d.VerticalPositionAlign.TOP },
+              wrap: { type: d.TextWrappingType.SQUARE },
+            }
+          : undefined;
         children.push(new Paragraph({
+          alignment: d.AlignmentType ? d.AlignmentType.CENTER : undefined,
           children: [
-            new ImageRun({ data: buffer, transformation: { width: targetW, height: targetH } })
+            new ImageRun({ data: buffer, transformation: { width: targetW, height: targetH }, floating })
           ],
         }));
       }
