@@ -387,13 +387,13 @@ async function downloadDocxEditable() {
         new TextRun({ text: header, bold: true, size: 26 }),
       ] }));
       if (tag) {
-        children.push(new Paragraph({ children: [ new TextRun({ text: `Tag: ${tag}`, italics: true, size: 20 }) ] }));
+        children.push(new Paragraph({ children: [ new TextRun({ text: `Item clicado: ${tag}`, italics: true, size: 20 }) ] }));
       }
 
       if (s.imageDataUrl) {
         const dims = await getImageDimensions(s.imageDataUrl);
         const ratio = dims.width > 0 ? dims.height / dims.width : 1;
-        const MAX_HEIGHT_PX = 800;
+        const MAX_HEIGHT_PX = 900;
 
         let targetW = Math.min(CONTENT_WIDTH_PX, dims.width);
         let targetH = Math.max(1, Math.round(targetW * ratio));
@@ -456,9 +456,9 @@ function downloadHtml() {
       return `<article style="border:1px solid #d1d5db;border-radius:8px;padding:10px;background:#fafafa;margin:10px 0;">
         <header>
           <h3 style="margin:0 0 6px;color:#111827;font-family:system-ui,Segoe UI,Roboto">${t}</h3>
-          ${tag ? `<p style="margin:0 0 8px;color:#374151;font-size:12px">Tag: ${tag}</p>` : ''}
+          ${tag ? `<p style="margin:0 0 8px;color:#374151;font-size:12px">Item clicado: ${tag}</p>` : ''}
         </header>
-        ${img ? `<img src="${img}" alt="${t}" style="max-width:100%;border:1px solid #e5e7eb;border-radius:6px">` : ''}
+        ${img ? `<img src="${img}" alt="${t}" style="width:${CONTENT_WIDTH_PX}px;height:auto;border:1px solid #e5e7eb;border-radius:6px">` : ''}
         ${d ? `<p style="margin:8px 0;color:#1f2937">${d}</p>` : ''}
       </article>`;
     }).join('');
@@ -471,17 +471,19 @@ function downloadHtml() {
       <title>${escapeHtml(title)}</title>
       <style>
         body{font-family:ui-sans-serif,system-ui,Segoe UI,Roboto;background:#ffffff;color:#111827;margin:20px}
+        .docx-container{width:${CONTENT_WIDTH_PX}px;margin:0 auto}
         h1{font-size:20px;margin:0 0 12px}
         .hint{color:#6b7280;font-size:12px;margin-bottom:12px}
       </style>
     </head><body>
-      <h1>${escapeHtml(title)}</h1>
-      <p class="hint">Arquivo gerado pelo Homolog — contém imagens incorporadas.</p>
-      <section>
-        <h2 style="font-family:system-ui,Segoe UI,Roboto;color:#111827">Passos</h2>
-        ${stepsHtml || '<p>Nenhum passo.</p>'}
-      </section>
-      
+      <div class="docx-container">
+        <h1>${escapeHtml(title)}</h1>
+        <p class="hint">Arquivo gerado pelo Homolog — contém imagens incorporadas.</p>
+        <section>
+          <h2 style="font-family:system-ui,Segoe UI,Roboto;color:#111827">Passos</h2>
+          ${stepsHtml || '<p>Nenhum passo.</p>'}
+        </section>
+      </div>
     </body></html>`;
 
     const blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
@@ -752,8 +754,33 @@ function suggestLabelFromVideo(coords) {
               if (d < bestDist) { bestDist = d; chosenWord = wItem; }
             }
           }
-          const rawText = (chosenWord?.text || '').trim();
-          const label = pickLabelFromText(rawText);
+          if (!chosenWord) {
+            return resolve(null);
+          }
+          const chosenBB = getBB(chosenWord);
+          const lineTop = yMinOf(chosenBB);
+          const lineBottom = yMaxOf(chosenBB);
+          const bandPad = Math.max(4, Math.round((lineBottom - lineTop) * 0.6));
+          const bandTop = lineTop - bandPad;
+          const bandBottom = lineBottom + bandPad;
+
+          // Palavras na mesma linha (faixa vertical próxima à palavra escolhida)
+          const lineWords = words
+            .filter(w => {
+              const bb = getBB(w); if (!bb) return false;
+              const overlapY = Math.min(yMaxOf(bb), bandBottom) - Math.max(yMinOf(bb), bandTop);
+              return overlapY > 0;
+            })
+            .sort((a, b) => xMinOf(getBB(a)) - xMinOf(getBB(b)));
+
+          const phrase = lineWords
+            .map(w => String(w?.text || '').trim())
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+
+          const fallbackWord = String(chosenWord?.text || '').trim();
+          const label = pickLabelFromText(phrase || fallbackWord);
           resolve(label || null);
         })
         .catch(err => { console.warn('OCR falhou:', err); resolve(null); });
@@ -766,10 +793,12 @@ function suggestLabelFromVideo(coords) {
 
 function pickLabelFromText(text) {
   if (!text) return null;
-  const tokens = String(text).trim().split(/\s+/).filter(Boolean);
-  const first = tokens[0] || null;
-  if (!first) return null;
-  return first.length <= 60 ? first : first.slice(0, 60);
+  const cleaned = String(text).replace(/\s+/g, ' ').trim();
+  // Evitar cortar no meio de palavra; preferir limite em 80 chars
+  if (cleaned.length <= 80) return cleaned;
+  const sliced = cleaned.slice(0, 80);
+  const lastSpace = sliced.lastIndexOf(' ');
+  return lastSpace > 40 ? sliced.slice(0, lastSpace) : sliced;
 }
 
 function sanitizeLabel(label) {
