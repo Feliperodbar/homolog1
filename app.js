@@ -30,8 +30,8 @@ const EXPORT_IMAGE_HEIGHT_CM = 9.28;
 
 // Tamanho máximo específico para imagens no DOCX (para ficarem menores)
 // Ajuste aqui se quiser outro limite.
-const DOCX_IMAGE_MAX_WIDTH_CM = 14; // largura máxima para imagens dos passos
-const DOCX_IMAGE_MAX_HEIGHT_CM = 20; // altura máxima para imagens dos passos
+const DOCX_IMAGE_MAX_WIDTH_CM = 7; // largura fixa para imagens dos passos (DOCX)
+const DOCX_IMAGE_MAX_HEIGHT_CM = 10; // altura fixa para imagens dos passos (DOCX)
 
 // Detecção de movimento reduzido: reflete preferência no documento
 const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -551,12 +551,9 @@ async function downloadDocxEditable() {
       }
 
       if (s.imageDataUrl) {
-        const maxW = cmToPx(DOCX_IMAGE_MAX_WIDTH_CM || IMAGE_WIDTH_CM);
-        const maxH = cmToPx(DOCX_IMAGE_MAX_HEIGHT_CM || IMAGE_HEIGHT_CM);
-        const resized = await resizeImageToFit(s.imageDataUrl, maxW, maxH);
-        const buffer = resized.buffer;
-        const targetW = resized.width;
-        const targetH = resized.height;
+        const buffer = await dataUrlToArrayBuffer(s.imageDataUrl);
+        const targetW = cmToPx(DOCX_IMAGE_MAX_WIDTH_CM);
+        const targetH = cmToPx(DOCX_IMAGE_MAX_HEIGHT_CM);
         const floating = (d.HorizontalPositionRelativeFrom && d.HorizontalPositionAlign && d.VerticalPositionRelativeFrom && d.VerticalPositionAlign && d.TextWrappingType)
           ? {
               horizontalPosition: { relative: d.HorizontalPositionRelativeFrom.MARGIN, align: d.HorizontalPositionAlign.CENTER },
