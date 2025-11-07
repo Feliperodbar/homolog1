@@ -405,6 +405,72 @@ function getImageDimensions(dataUrl) {
   });
 }
 
+// Redimensiona uma imagem (data URL) para caber nos limites informados, mantendo proporção.
+// Retorna { buffer: ArrayBuffer, width: number, height: number } com o novo tamanho em px.
+async function resizeImageToFit(dataUrl, maxWpx, maxHpx) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = async () => {
+      const srcW = img.naturalWidth || img.width;
+      const srcH = img.naturalHeight || img.height;
+      const scale = Math.min(maxWpx / srcW, maxHpx / srcH, 1);
+      const targetW = Math.round(srcW * scale);
+      const targetH = Math.round(srcH * scale);
+
+      // Se não precisa reduzir, retorna dado original
+      if (scale >= 1) {
+        try {
+          const blob = await (await fetch(dataUrl)).blob();
+          const buffer = await blob.arrayBuffer();
+          resolve({ buffer, width: srcW, height: srcH });
+        } catch (e) {
+          resolve({ buffer: new ArrayBuffer(0), width: srcW, height: srcH });
+        }
+        return;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = targetW;
+      canvas.height = targetH;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        // Fallback: retorna original
+        (async () => {
+          const blob = await (await fetch(dataUrl)).blob();
+          const buffer = await blob.arrayBuffer();
+          resolve({ buffer, width: srcW, height: srcH });
+        })();
+        return;
+      }
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          const originalBlob = await (await fetch(dataUrl)).blob();
+          const buffer = await originalBlob.arrayBuffer();
+          resolve({ buffer, width: srcW, height: srcH });
+          return;
+        }
+        const buffer = await blob.arrayBuffer();
+        resolve({ buffer, width: targetW, height: targetH });
+      }, 'image/jpeg', 0.9);
+    };
+    img.onerror = async () => {
+      try {
+        const blob = await (await fetch(dataUrl)).blob();
+        const buffer = await blob.arrayBuffer();
+        resolve({ buffer, width: maxWpx, height: maxHpx });
+      } catch (e) {
+        resolve({ buffer: new ArrayBuffer(0), width: maxWpx, height: maxHpx });
+      }
+    };
+    img.src = dataUrl;
+  });
+}
+
 async function downloadDocxEditable() {
   try {
     if (!window.docx) {
@@ -475,13 +541,12 @@ async function downloadDocxEditable() {
       }
 
       if (s.imageDataUrl) {
-        const buffer = await dataUrlToArrayBuffer(s.imageDataUrl);
-        const dims = await getImageDimensions(s.imageDataUrl);
         const maxW = cmToPx(DOCX_IMAGE_MAX_WIDTH_CM || IMAGE_WIDTH_CM);
         const maxH = cmToPx(DOCX_IMAGE_MAX_HEIGHT_CM || IMAGE_HEIGHT_CM);
-        const scale = Math.min(maxW / (dims.width || maxW), maxH / (dims.height || maxH), 1);
-        const targetW = Math.round((dims.width || maxW) * scale);
-        const targetH = Math.round((dims.height || maxH) * scale);
+        const resized = await resizeImageToFit(s.imageDataUrl, maxW, maxH);
+        const buffer = resized.buffer;
+        const targetW = resized.width;
+        const targetH = resized.height;
         const floating = (d.HorizontalPositionRelativeFrom && d.HorizontalPositionAlign && d.VerticalPositionRelativeFrom && d.VerticalPositionAlign && d.TextWrappingType)
           ? {
               horizontalPosition: { relative: d.HorizontalPositionRelativeFrom.MARGIN, align: d.HorizontalPositionAlign.CENTER },
