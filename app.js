@@ -30,8 +30,8 @@ const EXPORT_IMAGE_HEIGHT_CM = 9.28;
 
 // Tamanho máximo específico para imagens no DOCX (para ficarem menores)
 // Ajuste aqui se quiser outro limite.
-const DOCX_IMAGE_MAX_WIDTH_CM = 16; // largura máxima para imagens dos passos
-const DOCX_IMAGE_MAX_HEIGHT_CM = 8; // altura máxima para imagens dos passos
+const DOCX_IMAGE_MAX_WIDTH_CM = 14; // largura máxima para imagens dos passos
+const DOCX_IMAGE_MAX_HEIGHT_CM = 20; // altura máxima para imagens dos passos
 
 // Detecção de movimento reduzido: reflete preferência no documento
 const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -319,12 +319,12 @@ function buildExportHtml() {
     const d = escapeHtml(s.description || '');
     const tag = escapeHtml(s.tag || '');
     const img = s.imageDataUrl || '';
-    return `<article style="border:1px solid #d1d5db;border-radius:6px;padding:10px;background:#fafafa;margin:10px 0;">
+    return `<article style="border:none;border-radius:6px;padding:10px;background:#fafafa;margin:10px 0;">
       <header>
         <h3 style="margin:0 0 6px;color:#111827;font-family:system-ui,Segoe UI,Roboto">${t}</h3>
         ${tag ? `<p style="margin:0 0 8px;color:#374151;font-size:12px">Item clicado: ${tag}</p>` : ''}
       </header>
-      ${img ? `<img src="${img}" alt="${t}" style="display:block;margin:6px auto;width:${CONTENT_WIDTH_CM}cm;height:auto;max-height:${IMAGE_HEIGHT_CM}cm;border:1px solid #e5e7eb;border-radius:6px;object-fit:contain">` : ''}
+      ${img ? `<img src="${img}" alt="${t}" style="display:block;margin:6px auto;width:${CONTENT_WIDTH_CM}cm;height:auto;max-height:${IMAGE_HEIGHT_CM}cm;border:none;border-radius:6px;object-fit:contain">` : ''}
       ${d ? `<p style="margin:8px 0;color:#1f2937">${d}</p>` : ''}
     </article>`;
   }).join('');
@@ -342,8 +342,8 @@ function buildExportHtml() {
       .brand{display:flex;align-items:center;gap:8px;margin-bottom:6px}
       .brand-logo{height:20px}
       .brand-name{display:none}
-      .meta-table{width:100%;border-collapse:collapse;font-size:12px}
-      .meta-table th,.meta-table td{border:1px solid #9ca3af;padding:6px;vertical-align:top}
+      .meta-table{width:100%;border-collapse:collapse;font-size:12px;border:none}
+      .meta-table th,.meta-table td{border:none;padding:6px;vertical-align:top}
     </style>
   </head><body>
     <div class="docx-container">
@@ -523,7 +523,17 @@ async function downloadDocxEditable() {
 
     const headerChildren = [
       ...(headerImageRun ? [ new Paragraph({ alignment: d.AlignmentType ? d.AlignmentType.CENTER : undefined, children: [ headerImageRun ] }) ] : []),
-      ...(Table ? [ new Table({ rows: headerRows }) ] : [ new Paragraph({ children: [ new TextRun({ text: 'Projeto:', bold: true }) ] }) ]),
+      ...(Table ? [ new Table({
+        rows: headerRows,
+        borders: {
+          top: { size: 0, color: 'FFFFFF', style: d.BorderStyle ? d.BorderStyle.NONE : undefined },
+          left: { size: 0, color: 'FFFFFF', style: d.BorderStyle ? d.BorderStyle.NONE : undefined },
+          bottom: { size: 0, color: 'FFFFFF', style: d.BorderStyle ? d.BorderStyle.NONE : undefined },
+          right: { size: 0, color: 'FFFFFF', style: d.BorderStyle ? d.BorderStyle.NONE : undefined },
+          insideHorizontal: { size: 0, color: 'FFFFFF', style: d.BorderStyle ? d.BorderStyle.NONE : undefined },
+          insideVertical: { size: 0, color: 'FFFFFF', style: d.BorderStyle ? d.BorderStyle.NONE : undefined },
+        },
+      }) ] : [ new Paragraph({ children: [ new TextRun({ text: 'Projeto:', bold: true }) ] }) ]),
     ];
 
     // Conteúdo principal
@@ -609,12 +619,12 @@ function downloadHtml() {
       const d = escapeHtml(s.description || '');
       const tag = escapeHtml(s.tag || '');
       const img = s.imageDataUrl || '';
-      return `<article style="border:1px solid #d1d5db;border-radius:8px;padding:10px;background:#fafafa;margin:10px 0;">
+      return `<article style="border:none;border-radius:8px;padding:10px;background:#fafafa;margin:10px 0;">
         <header>
           <h3 style="margin:0 0 6px;color:#111827;font-family:system-ui,Segoe UI,Roboto">${t}</h3>
           ${tag ? `<p style="margin:0 0 8px;color:#374151;font-size:12px">Item clicado: ${tag}</p>` : ''}
         </header>
-        ${img ? `<img src="${img}" alt="${t}" style="display:block;margin:6px auto;width:${CONTENT_WIDTH_CM}cm;height:auto;max-height:${IMAGE_HEIGHT_CM}cm;border:1px solid #e5e7eb;border-radius:6px;object-fit:contain">` : ''}
+        ${img ? `<img src="${img}" alt="${t}" style="display:block;margin:6px auto;width:${CONTENT_WIDTH_CM}cm;height:auto;max-height:${IMAGE_HEIGHT_CM}cm;border:none;border-radius:6px;object-fit:contain">` : ''}
         ${d ? `<p style="margin:8px 0;color:#1f2937">${d}</p>` : ''}
       </article>`;
     }).join('');
@@ -633,8 +643,8 @@ function downloadHtml() {
         .layout-header{margin:6px 0 14px}
         .brand{margin-bottom:6px}
         .brand-name{display:none}
-        .meta-table{width:100%;border-collapse:collapse;font-size:12px}
-        .meta-table th,.meta-table td{border:1px solid #9ca3af;padding:6px;vertical-align:top}
+        .meta-table{width:100%;border-collapse:collapse;font-size:12px;border:none}
+        .meta-table th,.meta-table td{border:none;padding:6px;vertical-align:top}
       </style>
     </head><body>
       <div class="docx-container">
