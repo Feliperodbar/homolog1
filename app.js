@@ -178,12 +178,13 @@ function removeLog(id) {
   persistLogs();
 }
 
-function addStep() {
+async function addStep() {
   if (!mediaStream) {
     showToast('Inicie a captura para criar passos');
     return;
   }
   await ensureVideoReady();
+
   const image = captureScreenshot();
   if (!image) {
     showToast('Não foi possível capturar a tela');
