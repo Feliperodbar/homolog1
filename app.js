@@ -328,9 +328,39 @@ function buildExportHtml() {
       .docx-container{width:${CONTENT_WIDTH_CM}cm;margin:0 auto}
       h1{font-size:20px;margin:0 0 12px}
       .hint{color:#6b7280;font-size:12px;margin-bottom:12px}
+      .layout-header{margin:6px 0 14px}
+      .brand{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+      .brand-logo{height:20px}
+      .brand-name{font-weight:600;color:#0a6a3b}
+      .meta-table{width:100%;border-collapse:collapse;font-size:12px}
+      .meta-table th,.meta-table td{border:1px solid #9ca3af;padding:6px;vertical-align:top}
     </style>
   </head><body>
     <div class="docx-container">
+      <div class="layout-header">
+        <div class="brand">
+          <img src="./assets/icon.svg" alt="Neoenergia" class="brand-logo"/>
+          <span class="brand-name">Neoenergia</span>
+        </div>
+        <table class="meta-table">
+          <tr>
+            <td><strong>Projeto:</strong> Conexão Digital</td>
+            <td><strong>Frente:</strong> Agência Virtual Unificada</td>
+          </tr>
+          <tr>
+            <td><strong>Distribuidora:</strong> Neoenergia NE</td>
+            <td><strong>Responsável:</strong> Vinicius Santana</td>
+          </tr>
+          <tr>
+            <td><strong>Produto/Serviço:</strong> Ligação Nova Perfil Consultor</td>
+            <td><strong>Data:</strong> ${now.toLocaleDateString('pt-BR')}</td>
+          </tr>
+          <tr>
+            <td><strong>Resultado Esperado:</strong> Evidenciar as funcionalidades corretas e erros do serviço</td>
+            <td><strong>Versão:</strong> 8.7.23 &nbsp; | &nbsp; <strong>Navegador:</strong> Edge</td>
+          </tr>
+        </table>
+      </div>
       <h1>${escapeHtml(title)}</h1>
       <p class="hint">Arquivo gerado pelo Homolog — contém imagens incorporadas.</p>
       <section>
@@ -363,11 +393,11 @@ async function downloadDocxEditable() {
       // fallback para HTML->DOCX se docx não estiver disponível
       return downloadDocx();
     }
-    const { Document, Packer, Paragraph, TextRun, ImageRun } = window.docx;
+    const { Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell, Header } = window.docx;
     const now = new Date();
     const title = `Homolog — Captura ${now.toLocaleString()}`;
-    const IMAGE_WIDTH_CM = 16;
-    const IMAGE_HEIGHT_CM = 10;
+    const IMAGE_WIDTH_CM = 16; // largura uniforme
+    const IMAGE_HEIGHT_CM = 10; // altura uniforme
     const cmToPx = (cm) => Math.round((cm / 2.54) * 96);
 
     const children = [];
@@ -380,6 +410,32 @@ async function downloadDocxEditable() {
       children.push(new Paragraph({ children: [new TextRun({ text: 'Nenhum passo.', size: 22 })] }));
     }
 
+    // Cabeçalho fixo em todas as páginas (texto e tabela simples)
+    const headerRows = [
+      new TableRow({ children: [
+        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Projeto: Conexão Digital', bold: true }) ] }) ] }),
+        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Frente: Agência Virtual Unificada', bold: true }) ] }) ] }),
+      ]}),
+      new TableRow({ children: [
+        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Distribuidora: Neoenergia NE' }) ] }) ] }),
+        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Responsável: Vinicius Santana' }) ] }) ] }),
+      ]}),
+      new TableRow({ children: [
+        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Produto/Serviço: Ligação Nova Perfil Consultor' }) ] }) ] }),
+        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Data: 30/07/2025' }) ] }) ] }),
+      ]}),
+      new TableRow({ children: [
+        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Resultado Esperado: Evidenciar funcionalidades corretas e erros do serviço' }) ] }) ] }),
+        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Versão: 8.7.23  |  Navegador: Edge' }) ] }) ] }),
+      ]}),
+    ];
+
+    const headerChildren = [
+      new Paragraph({ children: [ new TextRun({ text: 'Neoenergia', bold: true, size: 28 }) ] }),
+      ...(Table ? [ new Table({ rows: headerRows }) ] : [ new Paragraph({ children: [ new TextRun({ text: 'Projeto: Conexão Digital | Frente: Agência Virtual Unificada', bold: true, size: 20 }) ] }) ]),
+    ];
+
+    // Conteúdo principal
     for (let i = 0; i < steps.length; i++) {
       const s = steps[i];
       const header = s.title || `Passo ${i + 1}`;
@@ -394,9 +450,9 @@ async function downloadDocxEditable() {
       }
 
       if (s.imageDataUrl) {
+        const buffer = await dataUrlToArrayBuffer(s.imageDataUrl);
         const targetW = cmToPx(IMAGE_WIDTH_CM);
         const targetH = cmToPx(IMAGE_HEIGHT_CM);
-        const buffer = await dataUrlToArrayBuffer(s.imageDataUrl);
         children.push(new Paragraph({
           children: [
             new ImageRun({ data: buffer, transformation: { width: targetW, height: targetH } })
@@ -416,6 +472,9 @@ async function downloadDocxEditable() {
             page: {
               margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 },
             },
+          },
+          headers: {
+            default: Header ? new Header({ children: headerChildren }) : undefined,
           },
           children,
         },
@@ -468,9 +527,39 @@ function downloadHtml() {
         .docx-container{width:${CONTENT_WIDTH_CM}cm;margin:0 auto}
         h1{font-size:20px;margin:0 0 12px}
         .hint{color:#6b7280;font-size:12px;margin-bottom:12px}
+        .layout-header{margin:6px 0 14px}
+        .brand{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+        .brand-logo{height:20px}
+        .brand-name{font-weight:600;color:#0a6a3b}
+        .meta-table{width:100%;border-collapse:collapse;font-size:12px}
+        .meta-table th,.meta-table td{border:1px solid #9ca3af;padding:6px;vertical-align:top}
       </style>
     </head><body>
       <div class="docx-container">
+        <div class="layout-header">
+          <div class="brand">
+            <img src="./assets/icon.svg" alt="Neoenergia" class="brand-logo"/>
+            <span class="brand-name">Neoenergia</span>
+          </div>
+          <table class="meta-table">
+            <tr>
+              <td><strong>Projeto:</strong> Conexão Digital</td>
+              <td><strong>Frente:</strong> Agência Virtual Unificada</td>
+            </tr>
+            <tr>
+              <td><strong>Distribuidora:</strong> Neoenergia NE</td>
+              <td><strong>Responsável:</strong> Vinicius Santana</td>
+            </tr>
+            <tr>
+              <td><strong>Produto/Serviço:</strong> Ligação Nova Perfil Consultor</td>
+              <td><strong>Data:</strong> ${now.toLocaleDateString('pt-BR')}</td>
+            </tr>
+            <tr>
+              <td><strong>Resultado Esperado:</strong> Evidenciar as funcionalidades corretas e erros do serviço</td>
+              <td><strong>Versão:</strong> 8.7.23 &nbsp; | &nbsp; <strong>Navegador:</strong> Edge</td>
+            </tr>
+          </table>
+        </div>
         <h1>${escapeHtml(title)}</h1>
         <p class="hint">Arquivo gerado pelo Homolog — contém imagens incorporadas.</p>
         <section>
