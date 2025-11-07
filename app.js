@@ -178,7 +178,7 @@ function removeLog(id) {
   persistLogs();
 }
 
-async function addStep() {
+function addStep() {
   if (!mediaStream) {
     showToast('Inicie a captura para criar passos');
     return;
@@ -192,7 +192,7 @@ async function addStep() {
   const step = {
     id: `step_${Date.now()}`,
     title: `Passo #${steps.length + 1} — ${new Date().toLocaleString('pt-BR')}`,
-    description: '',
+    description: 'Passo manual. Descreva a ação realizada, o objetivo e o resultado esperado.',
     imageDataUrl: image,
     createdAt: Date.now(),
   };
@@ -250,18 +250,18 @@ function renderSteps() {
     titleInput.value = s.title || '';
     titleInput.addEventListener('input', (e) => updateStep(s.id, 'title', e.target.value));
 
-  const descLabel = document.createElement('label');
-  descLabel.textContent = 'Descrição';
-  const descInput = document.createElement('textarea');
-  descInput.value = s.description || '';
-  descInput.addEventListener('input', (e) => updateStep(s.id, 'description', e.target.value));
+    const descLabel = document.createElement('label');
+    descLabel.textContent = 'Descrição';
+    const descInput = document.createElement('textarea');
+    descInput.value = s.description || '';
+    descInput.addEventListener('input', (e) => updateStep(s.id, 'description', e.target.value));
 
     const tagLabel = document.createElement('label');
-    tagLabel.textContent = 'Tag (item clicado)';
+    tagLabel.textContent = 'Item clicado';
     const tagInput = document.createElement('input');
     tagInput.type = 'text';
     tagInput.value = s.tag || '';
-    tagInput.placeholder = 'Ex.: Home, Menu, Salvar';
+    tagInput.placeholder = 'Texto visível do item clicado (ex.: "Salvar", "Menu Home").';
     tagInput.addEventListener('input', (e) => updateStep(s.id, 'tag', e.target.value));
 
     fields.appendChild(titleLabel);
@@ -301,7 +301,7 @@ function escapeHtml(str) {
 function buildExportHtml() {
   const now = new Date();
   const title = `Homolog — Captura ${now.toLocaleString()}`;
-  const CONTENT_WIDTH_PX = 624; // ~6.5in a 96dpi (ajuste para caber na página)
+  const CONTENT_WIDTH_PX = 602; // largura útil A4 com margens de 1"
   const stepsHtml = steps.map((s, i) => {
     const t = escapeHtml(s.title || `Passo ${i + 1}`);
     const d = escapeHtml(s.description || '');
@@ -310,7 +310,7 @@ function buildExportHtml() {
     return `<article style="border:1px solid #d1d5db;border-radius:6px;padding:10px;background:#fafafa;margin:10px 0;">
       <header>
         <h3 style="margin:0 0 6px;color:#111827;font-family:system-ui,Segoe UI,Roboto">${t}</h3>
-        ${tag ? `<p style="margin:0 0 8px;color:#374151;font-size:12px">Tag: ${tag}</p>` : ''}
+        ${tag ? `<p style="margin:0 0 8px;color:#374151;font-size:12px">Item clicado: ${tag}</p>` : ''}
       </header>
       ${img ? `<img src="${img}" alt="${t}" width="${CONTENT_WIDTH_PX}" style="width:100%;height:auto;border:1px solid #e5e7eb;border-radius:6px">` : ''}
       ${d ? `<p style="margin:8px 0;color:#1f2937">${d}</p>` : ''}
@@ -364,7 +364,7 @@ async function downloadDocxEditable() {
     const { Document, Packer, Paragraph, TextRun, ImageRun } = window.docx;
     const now = new Date();
     const title = `Homolog — Captura ${now.toLocaleString()}`;
-    const CONTENT_WIDTH_PX = 624; // 6.5in a 96dpi
+    const CONTENT_WIDTH_PX = 602; // largura útil exata para A4 com margens de 1"
 
     const children = [];
     // Título
@@ -392,10 +392,22 @@ async function downloadDocxEditable() {
       if (s.imageDataUrl) {
         const dims = await getImageDimensions(s.imageDataUrl);
         const ratio = dims.width > 0 ? dims.height / dims.width : 1;
-        const targetW = CONTENT_WIDTH_PX;
-        const targetH = Math.max(1, Math.round(targetW * ratio));
+        const MAX_HEIGHT_PX = 800;
+
+        let targetW = Math.min(CONTENT_WIDTH_PX, dims.width);
+        let targetH = Math.max(1, Math.round(targetW * ratio));
+        if (targetH > MAX_HEIGHT_PX) {
+          const scale = MAX_HEIGHT_PX / targetH;
+          targetW = Math.max(1, Math.round(targetW * scale));
+          targetH = Math.max(1, Math.round(targetH * scale));
+        }
+
         const buffer = await dataUrlToArrayBuffer(s.imageDataUrl);
-        children.push(new Paragraph({ children: [ new ImageRun({ data: buffer, transformation: { width: targetW, height: targetH } }) ] }));
+        children.push(new Paragraph({
+          children: [
+            new ImageRun({ data: buffer, transformation: { width: targetW, height: targetH } })
+          ],
+        }));
       }
 
       if (desc) {
@@ -434,6 +446,7 @@ function downloadHtml() {
   try {
     const now = new Date();
     const title = `Homolog — Captura ${now.toLocaleString()}`;
+    const CONTENT_WIDTH_PX = 602; // largura útil A4 com margens de 1"
     const stepsHtml = steps.map((s, i) => {
       const t = escapeHtml(s.title || `Passo ${i+1}`);
       const d = escapeHtml(s.description || '');
@@ -672,9 +685,12 @@ async function addStepWithHighlight(coords) {
     const refinedTitle = label; // manter exatamente como na tela
     updateStep(id, 'title', refinedTitle);
     updateStep(id, 'tag', label);
+    updateStep(id, 'description', buildDefaultDescription(label, coords));
     renderSteps();
     showToast(`Clicado em ${label}`);
   } else {
+    updateStep(id, 'description', buildDefaultDescription(null, coords));
+    renderSteps();
     showToast(defaultTitle);
   }
 }
@@ -760,6 +776,16 @@ function sanitizeLabel(label) {
   const trimmed = label.trim();
   if (!trimmed) return null;
   return trimmed;
+}
+
+// Gera uma descrição padrão mais clara para o item clicado
+function buildDefaultDescription(label, coords) {
+    const hasCoords = coords && typeof coords.x === 'number' && typeof coords.y === 'number';
+    const pos = hasCoords ? ` (${coords.x}, ${coords.y})` : '';
+    if (label) {
+        return `Clique no item "${label}"${pos} para executar a ação pretendida. Descreva o objetivo, os passos e o resultado esperado.`;
+    }
+    return `Clique na área indicada${pos}. Descreva o objetivo, os passos e o resultado esperado.`;
 }
 
 // Removido: toTitleCase (não utilizado)
