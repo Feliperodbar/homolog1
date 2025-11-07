@@ -306,7 +306,7 @@ function escapeHtml(str) {
 
 function buildExportHtml() {
   const now = new Date();
-  const title = `Homolog — Captura ${now.toLocaleString()}`;
+  const title = '';
   const CONTENT_WIDTH_CM = EXPORT_IMAGE_WIDTH_CM;
   const IMAGE_HEIGHT_CM = EXPORT_IMAGE_HEIGHT_CM;
   const stepsHtml = steps.map((s, i) => {
@@ -319,7 +319,7 @@ function buildExportHtml() {
         <h3 style="margin:0 0 6px;color:#111827;font-family:system-ui,Segoe UI,Roboto">${t}</h3>
         ${tag ? `<p style="margin:0 0 8px;color:#374151;font-size:12px">Item clicado: ${tag}</p>` : ''}
       </header>
-      ${img ? `<img src="${img}" alt="${t}" style="display:block;margin:6px auto;width:${CONTENT_WIDTH_CM}cm;height:${IMAGE_HEIGHT_CM}cm;border:1px solid #e5e7eb;border-radius:6px;object-fit:contain">` : ''}
+      ${img ? `<img src="${img}" alt="${t}" style="display:block;margin:6px auto;width:${CONTENT_WIDTH_CM}cm;height:auto;max-height:${IMAGE_HEIGHT_CM}cm;border:1px solid #e5e7eb;border-radius:6px;object-fit:contain">` : ''}
       ${d ? `<p style="margin:8px 0;color:#1f2937">${d}</p>` : ''}
     </article>`;
   }).join('');
@@ -336,7 +336,7 @@ function buildExportHtml() {
       .layout-header{margin:6px 0 14px}
       .brand{display:flex;align-items:center;gap:8px;margin-bottom:6px}
       .brand-logo{height:20px}
-      .brand-name{font-weight:600;color:#0a6a3b}
+      .brand-name{display:none}
       .meta-table{width:100%;border-collapse:collapse;font-size:12px}
       .meta-table th,.meta-table td{border:1px solid #9ca3af;padding:6px;vertical-align:top}
     </style>
@@ -344,32 +344,29 @@ function buildExportHtml() {
     <div class="docx-container">
       <div class="layout-header">
         <div class="brand">
-          <img src="./assets/icon.svg" alt="Neoenergia" class="brand-logo"/>
-          <span class="brand-name">Neoenergia</span>
+          <img src="./assets/headerneo.JPG" alt="Header" style="width:100%;height:auto;border-radius:6px"/>
         </div>
         <table class="meta-table">
           <tr>
-            <td><strong>Projeto:</strong> Conexão Digital</td>
-            <td><strong>Frente:</strong> Agência Virtual Unificada</td>
+            <td><strong>Projeto:</strong> <span contenteditable="true"></span></td>
+            <td><strong>Frente:</strong> <span contenteditable="true"></span></td>
           </tr>
           <tr>
-            <td><strong>Distribuidora:</strong> Neoenergia NE</td>
-            <td><strong>Responsável:</strong> Vinicius Santana</td>
+            <td><strong>Distribuidora:</strong> <span contenteditable="true"></span></td>
+            <td><strong>Responsável:</strong> <span contenteditable="true"></span></td>
           </tr>
           <tr>
-            <td><strong>Produto/Serviço:</strong> Ligação Nova Perfil Consultor</td>
-            <td><strong>Data:</strong> ${now.toLocaleDateString('pt-BR')}</td>
+            <td><strong>Produto/Serviço:</strong> <span contenteditable="true"></span></td>
+            <td><strong>Data:</strong> <span contenteditable="true"></span></td>
           </tr>
           <tr>
-            <td><strong>Resultado Esperado:</strong> Evidenciar as funcionalidades corretas e erros do serviço</td>
-            <td><strong>Versão:</strong> 8.7.23 &nbsp; | &nbsp; <strong>Navegador:</strong> Edge</td>
+            <td><strong>Resultado Esperado:</strong> <span contenteditable="true"></span></td>
+            <td><strong>Versão:</strong> <span contenteditable="true"></span> &nbsp; | &nbsp; <strong>Navegador:</strong> <span contenteditable="true"></span></td>
           </tr>
         </table>
       </div>
-      <h1>${escapeHtml(title)}</h1>
-      <p class="hint">Arquivo gerado pelo Homolog — contém imagens incorporadas.</p>
       <section>
-        <h2 style="font-family:system-ui,Segoe UI,Roboto;color:#111827">Passos</h2>
+        
         ${stepsHtml || '<p>Nenhum passo.</p>'}
       </section>
     </div>
@@ -401,44 +398,50 @@ async function downloadDocxEditable() {
     const { Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell, Header } = window.docx;
     const d = window.docx || {};
     const now = new Date();
-    const title = `Homolog — Captura ${now.toLocaleString()}`;
+    const title = '';
     const IMAGE_WIDTH_CM = EXPORT_IMAGE_WIDTH_CM; // largura uniforme
     const IMAGE_HEIGHT_CM = EXPORT_IMAGE_HEIGHT_CM; // altura uniforme
     const cmToPx = (cm) => Math.round((cm / 2.54) * 96);
 
     const children = [];
-    // Título
-    children.push(new Paragraph({
-      children: [new TextRun({ text: title, bold: true, size: 28 })],
-    }));
+    // Sem título/rodapé iniciais conforme solicitação
 
-    if (!steps.length) {
-      children.push(new Paragraph({ children: [new TextRun({ text: 'Nenhum passo.', size: 22 })] }));
-    }
+    // Tenta carregar imagem de cabeçalho (assets/headerneo.JPG)
+    let headerImageRun = null;
+    try {
+      const headerImgUrl = './assets/headerneo.JPG';
+      const headerBuf = await (await fetch(headerImgUrl)).arrayBuffer();
+      const hdims = await getImageDimensions(headerImgUrl);
+      const maxW = cmToPx(IMAGE_WIDTH_CM);
+      const targetW = Math.min(maxW, hdims.width || maxW);
+      const scale = (hdims.width ? targetW / hdims.width : 1);
+      const targetH = Math.round((hdims.height || maxW) * scale);
+      headerImageRun = new ImageRun({ data: headerBuf, transformation: { width: targetW, height: targetH } });
+    } catch {}
 
     // Cabeçalho fixo em todas as páginas (texto e tabela simples)
     const headerRows = [
       new TableRow({ children: [
-        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Projeto: Conexão Digital', bold: true }) ] }) ] }),
-        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Frente: Agência Virtual Unificada', bold: true }) ] }) ] }),
+        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Projeto:', bold: true }), new TextRun({ text: ' ' }) ] }) ] }),
+        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Frente:', bold: true }), new TextRun({ text: ' ' }) ] }) ] }),
       ]}),
       new TableRow({ children: [
-        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Distribuidora: Neoenergia NE' }) ] }) ] }),
-        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Responsável: Vinicius Santana' }) ] }) ] }),
+        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Distribuidora:', bold: true }), new TextRun({ text: ' ' }) ] }) ] }),
+        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Responsável:', bold: true }), new TextRun({ text: ' ' }) ] }) ] }),
       ]}),
       new TableRow({ children: [
-        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Produto/Serviço: Ligação Nova Perfil Consultor' }) ] }) ] }),
-        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Data: 30/07/2025' }) ] }) ] }),
+        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Produto/Serviço:', bold: true }), new TextRun({ text: ' ' }) ] }) ] }),
+        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Data:', bold: true }), new TextRun({ text: ' ' }) ] }) ] }),
       ]}),
       new TableRow({ children: [
-        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Resultado Esperado: Evidenciar funcionalidades corretas e erros do serviço' }) ] }) ] }),
-        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Versão: 8.7.23  |  Navegador: Edge' }) ] }) ] }),
+        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Resultado Esperado:', bold: true }), new TextRun({ text: ' ' }) ] }) ] }),
+        new TableCell({ children: [ new Paragraph({ children: [ new TextRun({ text: 'Versão:', bold: true }), new TextRun({ text: ' ' }), new TextRun({ text: '  |  Navegador:', bold: true }), new TextRun({ text: ' ' }) ] }) ] }),
       ]}),
     ];
 
     const headerChildren = [
-      new Paragraph({ children: [ new TextRun({ text: 'Neoenergia', bold: true, size: 28 }) ] }),
-      ...(Table ? [ new Table({ rows: headerRows }) ] : [ new Paragraph({ children: [ new TextRun({ text: 'Projeto: Conexão Digital | Frente: Agência Virtual Unificada', bold: true, size: 20 }) ] }) ]),
+      ...(headerImageRun ? [ new Paragraph({ alignment: d.AlignmentType ? d.AlignmentType.CENTER : undefined, children: [ headerImageRun ] }) ] : []),
+      ...(Table ? [ new Table({ rows: headerRows }) ] : [ new Paragraph({ children: [ new TextRun({ text: 'Projeto:', bold: true }) ] }) ]),
     ];
 
     // Conteúdo principal
@@ -457,8 +460,12 @@ async function downloadDocxEditable() {
 
       if (s.imageDataUrl) {
         const buffer = await dataUrlToArrayBuffer(s.imageDataUrl);
-        const targetW = cmToPx(IMAGE_WIDTH_CM);
-        const targetH = cmToPx(IMAGE_HEIGHT_CM);
+        const dims = await getImageDimensions(s.imageDataUrl);
+        const maxW = cmToPx(IMAGE_WIDTH_CM);
+        const maxH = cmToPx(IMAGE_HEIGHT_CM);
+        const scale = Math.min(maxW / (dims.width || maxW), maxH / (dims.height || maxH), 1);
+        const targetW = Math.round((dims.width || maxW) * scale);
+        const targetH = Math.round((dims.height || maxH) * scale);
         const floating = (d.HorizontalPositionRelativeFrom && d.HorizontalPositionAlign && d.VerticalPositionRelativeFrom && d.VerticalPositionAlign && d.TextWrappingType)
           ? {
               horizontalPosition: { relative: d.HorizontalPositionRelativeFrom.MARGIN, align: d.HorizontalPositionAlign.CENTER },
@@ -512,7 +519,7 @@ async function downloadDocxEditable() {
 function downloadHtml() {
   try {
     const now = new Date();
-    const title = `Homolog — Captura ${now.toLocaleString()}`;
+    const title = '';
     const CONTENT_WIDTH_CM = EXPORT_IMAGE_WIDTH_CM; // largura útil absoluta em cm
     const IMAGE_HEIGHT_CM = EXPORT_IMAGE_HEIGHT_CM; // altura absoluta da imagem em cm
     const stepsHtml = steps.map((s, i) => {
@@ -525,7 +532,7 @@ function downloadHtml() {
           <h3 style="margin:0 0 6px;color:#111827;font-family:system-ui,Segoe UI,Roboto">${t}</h3>
           ${tag ? `<p style="margin:0 0 8px;color:#374151;font-size:12px">Item clicado: ${tag}</p>` : ''}
         </header>
-        ${img ? `<img src="${img}" alt="${t}" style="width:${CONTENT_WIDTH_CM}cm;height:${IMAGE_HEIGHT_CM}cm;border:1px solid #e5e7eb;border-radius:6px;object-fit:contain">` : ''}
+        ${img ? `<img src="${img}" alt="${t}" style="display:block;margin:6px auto;width:${CONTENT_WIDTH_CM}cm;height:auto;max-height:${IMAGE_HEIGHT_CM}cm;border:1px solid #e5e7eb;border-radius:6px;object-fit:contain">` : ''}
         ${d ? `<p style="margin:8px 0;color:#1f2937">${d}</p>` : ''}
       </article>`;
     }).join('');
@@ -542,9 +549,8 @@ function downloadHtml() {
         h1{font-size:20px;margin:0 0 12px}
         .hint{color:#6b7280;font-size:12px;margin-bottom:12px}
         .layout-header{margin:6px 0 14px}
-        .brand{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-        .brand-logo{height:20px}
-        .brand-name{font-weight:600;color:#0a6a3b}
+        .brand{margin-bottom:6px}
+        .brand-name{display:none}
         .meta-table{width:100%;border-collapse:collapse;font-size:12px}
         .meta-table th,.meta-table td{border:1px solid #9ca3af;padding:6px;vertical-align:top}
       </style>
@@ -552,33 +558,30 @@ function downloadHtml() {
       <div class="docx-container">
         <div class="layout-header">
           <div class="brand">
-            <img src="./assets/icon.svg" alt="Neoenergia" class="brand-logo"/>
-            <span class="brand-name">Neoenergia</span>
+            <img src="./assets/headerneo.JPG" alt="Header" style="width:100%;height:auto;border-radius:6px"/>
           </div>
           <table class="meta-table">
             <tr>
-              <td><strong>Projeto:</strong> Conexão Digital</td>
-              <td><strong>Frente:</strong> Agência Virtual Unificada</td>
+              <td><strong>Projeto:</strong> <span contenteditable="true"></span></td>
+              <td><strong>Frente:</strong> <span contenteditable="true"></span></td>
             </tr>
             <tr>
-              <td><strong>Distribuidora:</strong> Neoenergia NE</td>
-              <td><strong>Responsável:</strong> Vinicius Santana</td>
+              <td><strong>Distribuidora:</strong> <span contenteditable="true"></span></td>
+              <td><strong>Responsável:</strong> <span contenteditable="true"></span></td>
             </tr>
             <tr>
-              <td><strong>Produto/Serviço:</strong> Ligação Nova Perfil Consultor</td>
-              <td><strong>Data:</strong> ${now.toLocaleDateString('pt-BR')}</td>
+              <td><strong>Produto/Serviço:</strong> <span contenteditable="true"></span></td>
+              <td><strong>Data:</strong> <span contenteditable="true"></span></td>
             </tr>
             <tr>
-              <td><strong>Resultado Esperado:</strong> Evidenciar as funcionalidades corretas e erros do serviço</td>
-              <td><strong>Versão:</strong> 8.7.23 &nbsp; | &nbsp; <strong>Navegador:</strong> Edge</td>
+              <td><strong>Resultado Esperado:</strong> <span contenteditable="true"></span></td>
+              <td><strong>Versão:</strong> <span contenteditable="true"></span> &nbsp; | &nbsp; <strong>Navegador:</strong> <span contenteditable="true"></span></td>
             </tr>
           </table>
         </div>
-        <h1>${escapeHtml(title)}</h1>
-        <p class="hint">Arquivo gerado pelo Homolog — contém imagens incorporadas.</p>
         <section>
-          <h2 style="font-family:system-ui,Segoe UI,Roboto;color:#111827">Passos</h2>
-          ${stepsHtml || '<p>Nenhum passo.</p>'}
+        
+        ${stepsHtml || '<p>Nenhum passo.</p>'}
         </section>
       </div>
     </body></html>`;
