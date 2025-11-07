@@ -28,6 +28,11 @@ const STORAGE_KEY = 'homolog_steps_v1';
 const EXPORT_IMAGE_WIDTH_CM = 20.23;
 const EXPORT_IMAGE_HEIGHT_CM = 9.28;
 
+// Tamanho máximo específico para imagens no DOCX (para ficarem menores)
+// Ajuste aqui se quiser outro limite.
+const DOCX_IMAGE_MAX_WIDTH_CM = 16; // largura máxima para imagens dos passos
+const DOCX_IMAGE_MAX_HEIGHT_CM = 8; // altura máxima para imagens dos passos
+
 // Detecção de movimento reduzido: reflete preferência no documento
 const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 function applyMotionPreference(e) {
@@ -380,6 +385,17 @@ async function dataUrlToArrayBuffer(dataUrl) {
   return await blob.arrayBuffer();
 }
 
+async function assetToDataUrl(url) {
+  const res = await fetch(url);
+  const blob = await res.blob();
+  return await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = reject;
+    fr.readAsDataURL(blob);
+  });
+}
+
 function getImageDimensions(dataUrl) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -461,8 +477,8 @@ async function downloadDocxEditable() {
       if (s.imageDataUrl) {
         const buffer = await dataUrlToArrayBuffer(s.imageDataUrl);
         const dims = await getImageDimensions(s.imageDataUrl);
-        const maxW = cmToPx(IMAGE_WIDTH_CM);
-        const maxH = cmToPx(IMAGE_HEIGHT_CM);
+        const maxW = cmToPx(DOCX_IMAGE_MAX_WIDTH_CM || IMAGE_WIDTH_CM);
+        const maxH = cmToPx(DOCX_IMAGE_MAX_HEIGHT_CM || IMAGE_HEIGHT_CM);
         const scale = Math.min(maxW / (dims.width || maxW), maxH / (dims.height || maxH), 1);
         const targetW = Math.round((dims.width || maxW) * scale);
         const targetH = Math.round((dims.height || maxH) * scale);
@@ -522,6 +538,7 @@ function downloadHtml() {
     const title = '';
     const CONTENT_WIDTH_CM = EXPORT_IMAGE_WIDTH_CM; // largura útil absoluta em cm
     const IMAGE_HEIGHT_CM = EXPORT_IMAGE_HEIGHT_CM; // altura absoluta da imagem em cm
+    const headerImgSrc = './assets/headerneo.JPG';
     const stepsHtml = steps.map((s, i) => {
       const t = escapeHtml(s.title || `Passo ${i+1}`);
       const d = escapeHtml(s.description || '');
@@ -558,7 +575,7 @@ function downloadHtml() {
       <div class="docx-container">
         <div class="layout-header">
           <div class="brand">
-            <img src="./assets/headerneo.JPG" alt="Header" style="width:100%;height:auto;border-radius:6px"/>
+            <img src="${headerImgSrc}" alt="Header" style="width:100%;height:auto;border-radius:6px"/>
           </div>
           <table class="meta-table">
             <tr>
@@ -606,14 +623,18 @@ els.stop.addEventListener('click', stopCapture);
 els.add.addEventListener('click', addStep);
 if (els.downloadHtml) { els.downloadHtml.addEventListener('click', downloadHtml); }
 // Removido: exportação DOCX
-function downloadDocx() {
+async function downloadDocx() {
   try {
-    const html = buildExportHtml();
+    let html = buildExportHtml();
     const now = new Date();
     if (!window.htmlDocx || typeof window.htmlDocx.asBlob !== 'function') {
       showToast('Biblioteca DOCX não carregada');
       return;
     }
+    try {
+      const headerDataUrl = await assetToDataUrl('./assets/headerneo.JPG');
+      html = html.replace('./assets/headerneo.JPG', headerDataUrl);
+    } catch {}
     const blob = window.htmlDocx.asBlob(html, { orientation: 'portrait' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
