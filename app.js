@@ -23,6 +23,10 @@ let steps = [];
 const STORAGE_KEY = 'homolog_steps_v1';
 // Removido: LOGS_STORAGE_KEY
 
+// Configuração global de tamanho de imagem para exportações
+const EXPORT_IMAGE_WIDTH_CM = 16; // ajuste aqui para igualar ao seu documento Word
+const EXPORT_IMAGE_HEIGHT_CM = 10; // ajuste aqui para igualar ao seu documento Word
+
 // Detecção de movimento reduzido: reflete preferência no documento
 const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
 function applyMotionPreference(e) {
@@ -302,8 +306,8 @@ function escapeHtml(str) {
 function buildExportHtml() {
   const now = new Date();
   const title = `Homolog — Captura ${now.toLocaleString()}`;
-  const CONTENT_WIDTH_CM = 16; // largura útil absoluta em cm
-  const IMAGE_HEIGHT_CM = 10; // altura absoluta da imagem em cm
+  const CONTENT_WIDTH_CM = EXPORT_IMAGE_WIDTH_CM;
+  const IMAGE_HEIGHT_CM = EXPORT_IMAGE_HEIGHT_CM;
   const stepsHtml = steps.map((s, i) => {
     const t = escapeHtml(s.title || `Passo ${i + 1}`);
     const d = escapeHtml(s.description || '');
@@ -396,8 +400,8 @@ async function downloadDocxEditable() {
     const { Document, Packer, Paragraph, TextRun, ImageRun, Table, TableRow, TableCell, Header } = window.docx;
     const now = new Date();
     const title = `Homolog — Captura ${now.toLocaleString()}`;
-    const IMAGE_WIDTH_CM = 16; // largura uniforme
-    const IMAGE_HEIGHT_CM = 10; // altura uniforme
+    const IMAGE_WIDTH_CM = EXPORT_IMAGE_WIDTH_CM; // largura uniforme
+    const IMAGE_HEIGHT_CM = EXPORT_IMAGE_HEIGHT_CM; // altura uniforme
     const cmToPx = (cm) => Math.round((cm / 2.54) * 96);
 
     const children = [];
@@ -499,8 +503,8 @@ function downloadHtml() {
   try {
     const now = new Date();
     const title = `Homolog — Captura ${now.toLocaleString()}`;
-    const CONTENT_WIDTH_CM = 16; // largura útil absoluta em cm
-    const IMAGE_HEIGHT_CM = 10; // altura absoluta da imagem em cm
+    const CONTENT_WIDTH_CM = EXPORT_IMAGE_WIDTH_CM; // largura útil absoluta em cm
+    const IMAGE_HEIGHT_CM = EXPORT_IMAGE_HEIGHT_CM; // altura absoluta da imagem em cm
     const stepsHtml = steps.map((s, i) => {
       const t = escapeHtml(s.title || `Passo ${i+1}`);
       const d = escapeHtml(s.description || '');
