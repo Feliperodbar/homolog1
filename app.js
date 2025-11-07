@@ -302,7 +302,8 @@ function escapeHtml(str) {
 function buildExportHtml() {
   const now = new Date();
   const title = `Homolog — Captura ${now.toLocaleString()}`;
-  const CONTENT_WIDTH_PX = 602; // largura útil A4 com margens de 1"
+  const CONTENT_WIDTH_CM = 16; // largura útil absoluta em cm
+  const IMAGE_HEIGHT_CM = 10; // altura absoluta da imagem em cm
   const stepsHtml = steps.map((s, i) => {
     const t = escapeHtml(s.title || `Passo ${i + 1}`);
     const d = escapeHtml(s.description || '');
@@ -313,7 +314,7 @@ function buildExportHtml() {
         <h3 style="margin:0 0 6px;color:#111827;font-family:system-ui,Segoe UI,Roboto">${t}</h3>
         ${tag ? `<p style="margin:0 0 8px;color:#374151;font-size:12px">Item clicado: ${tag}</p>` : ''}
       </header>
-      ${img ? `<img src="${img}" alt="${t}" width="${CONTENT_WIDTH_PX}" style="width:100%;height:auto;border:1px solid #e5e7eb;border-radius:6px">` : ''}
+      ${img ? `<img src="${img}" alt="${t}" style="width:${CONTENT_WIDTH_CM}cm;height:${IMAGE_HEIGHT_CM}cm;border:1px solid #e5e7eb;border-radius:6px;object-fit:contain">` : ''}
       ${d ? `<p style="margin:8px 0;color:#1f2937">${d}</p>` : ''}
     </article>`;
   }).join('');
@@ -324,7 +325,7 @@ function buildExportHtml() {
     <title>${escapeHtml(title)}</title>
     <style>
       body{font-family:ui-sans-serif,system-ui,Segoe UI,Roboto;background:#ffffff;color:#111827;margin:20px}
-      .docx-container{width:${CONTENT_WIDTH_PX}px;margin:0 auto}
+      .docx-container{width:${CONTENT_WIDTH_CM}cm;margin:0 auto}
       h1{font-size:20px;margin:0 0 12px}
       .hint{color:#6b7280;font-size:12px;margin-bottom:12px}
     </style>
@@ -365,7 +366,9 @@ async function downloadDocxEditable() {
     const { Document, Packer, Paragraph, TextRun, ImageRun } = window.docx;
     const now = new Date();
     const title = `Homolog — Captura ${now.toLocaleString()}`;
-    const CONTENT_WIDTH_PX = 602; // largura útil exata para A4 com margens de 1"
+    const IMAGE_WIDTH_CM = 16;
+    const IMAGE_HEIGHT_CM = 10;
+    const cmToPx = (cm) => Math.round((cm / 2.54) * 96);
 
     const children = [];
     // Título
@@ -391,18 +394,8 @@ async function downloadDocxEditable() {
       }
 
       if (s.imageDataUrl) {
-        const dims = await getImageDimensions(s.imageDataUrl);
-        const ratio = dims.width > 0 ? dims.height / dims.width : 1;
-        const MAX_HEIGHT_PX = 900;
-
-        let targetW = Math.min(CONTENT_WIDTH_PX, dims.width);
-        let targetH = Math.max(1, Math.round(targetW * ratio));
-        if (targetH > MAX_HEIGHT_PX) {
-          const scale = MAX_HEIGHT_PX / targetH;
-          targetW = Math.max(1, Math.round(targetW * scale));
-          targetH = Math.max(1, Math.round(targetH * scale));
-        }
-
+        const targetW = cmToPx(IMAGE_WIDTH_CM);
+        const targetH = cmToPx(IMAGE_HEIGHT_CM);
         const buffer = await dataUrlToArrayBuffer(s.imageDataUrl);
         children.push(new Paragraph({
           children: [
@@ -447,7 +440,8 @@ function downloadHtml() {
   try {
     const now = new Date();
     const title = `Homolog — Captura ${now.toLocaleString()}`;
-    const CONTENT_WIDTH_PX = 602; // largura útil A4 com margens de 1"
+    const CONTENT_WIDTH_CM = 16; // largura útil absoluta em cm
+    const IMAGE_HEIGHT_CM = 10; // altura absoluta da imagem em cm
     const stepsHtml = steps.map((s, i) => {
       const t = escapeHtml(s.title || `Passo ${i+1}`);
       const d = escapeHtml(s.description || '');
@@ -458,7 +452,7 @@ function downloadHtml() {
           <h3 style="margin:0 0 6px;color:#111827;font-family:system-ui,Segoe UI,Roboto">${t}</h3>
           ${tag ? `<p style="margin:0 0 8px;color:#374151;font-size:12px">Item clicado: ${tag}</p>` : ''}
         </header>
-        ${img ? `<img src="${img}" alt="${t}" style="width:${CONTENT_WIDTH_PX}px;height:auto;border:1px solid #e5e7eb;border-radius:6px">` : ''}
+        ${img ? `<img src="${img}" alt="${t}" style="width:${CONTENT_WIDTH_CM}cm;height:${IMAGE_HEIGHT_CM}cm;border:1px solid #e5e7eb;border-radius:6px;object-fit:contain">` : ''}
         ${d ? `<p style="margin:8px 0;color:#1f2937">${d}</p>` : ''}
       </article>`;
     }).join('');
@@ -471,7 +465,7 @@ function downloadHtml() {
       <title>${escapeHtml(title)}</title>
       <style>
         body{font-family:ui-sans-serif,system-ui,Segoe UI,Roboto;background:#ffffff;color:#111827;margin:20px}
-        .docx-container{width:${CONTENT_WIDTH_PX}px;margin:0 auto}
+        .docx-container{width:${CONTENT_WIDTH_CM}cm;margin:0 auto}
         h1{font-size:20px;margin:0 0 12px}
         .hint{color:#6b7280;font-size:12px;margin-bottom:12px}
       </style>
