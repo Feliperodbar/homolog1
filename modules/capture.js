@@ -147,7 +147,7 @@ function drawPointerHighlight(ctx, x, y, baseRadius = 18) {
     ctx.fill();
 
     // Desenhar seta vermelha (-45°)
-    const size = r * 1.7;
+    const size = r * 1.2;
     const headLen = size * 0.58;
     const headWidth = size * 0.50;
     const tailLen = size * 0.9;
