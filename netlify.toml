@@ -1,4 +1,4 @@
-[# Netlify configuration]
+# Netlify configuration
 [build]
   publish = "."
   # Projeto 100% estático; sem comando de build
