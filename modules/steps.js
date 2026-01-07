@@ -51,12 +51,11 @@ export function updateStep(steps, id, field, value) {
 }
 
 /**
- * Renderiza a lista de passos no DOM como carrossel vertical
+ * Renderiza a lista de passos no DOM como cards verticais
  * @param {Array} steps - Lista de passos
- * @param {Object} callbacks - Callbacks { onDelete, onUpdate, onImageClick, onNavigate }
- * @param {number} currentIndex - Índice do passo atual (padrão: 0)
+ * @param {Object} callbacks - Callbacks { onDelete, onUpdate, onImageClick }
  */
-export function renderSteps(steps, { onDelete, onUpdate, onImageClick, onNavigate }, currentIndex = 0) {
+export function renderSteps(steps, { onDelete, onUpdate, onImageClick }) {
     const container = document.getElementById('stepsList');
     if (!container) return;
 
@@ -70,62 +69,19 @@ export function renderSteps(steps, { onDelete, onUpdate, onImageClick, onNavigat
         return;
     }
 
-    // Criar carrossel
-    const carousel = document.createElement('div');
-    carousel.className = 'carousel-container';
+    const list = document.createElement('div');
+    list.className = 'steps-cards';
 
-    // Adicionar passos numerados ao carrossel
     steps.forEach((s, index) => {
         const card = createStepCard(s, index + 1, steps.length, {
             onDelete,
             onUpdate,
             onImageClick,
         });
-        card.className = `step-card ${index === currentIndex ? 'active' : 'hidden'}`;
-        carousel.appendChild(card);
+        list.appendChild(card);
     });
 
-    container.appendChild(carousel);
-
-    // Adicionar controles de navegação
-    if (steps.length > 1) {
-        const controls = createCarouselControls(currentIndex, steps.length, onNavigate);
-        container.appendChild(controls);
-    }
-}
-
-/**
- * Cria controles de navegação do carrossel
- * @private
- */
-function createCarouselControls(currentIndex, total, onNavigate) {
-    const controls = document.createElement('div');
-    controls.className = 'carousel-controls';
-
-    // Botão anterior
-    const prevBtn = document.createElement('button');
-    prevBtn.className = 'carousel-btn prev-btn';
-    prevBtn.textContent = '← Anterior';
-    prevBtn.disabled = currentIndex === 0;
-    prevBtn.addEventListener('click', () => onNavigate(-1));
-
-    // Indicador
-    const indicator = document.createElement('div');
-    indicator.className = 'carousel-indicator';
-    indicator.textContent = `${currentIndex + 1} / ${total}`;
-
-    // Botão próximo
-    const nextBtn = document.createElement('button');
-    nextBtn.className = 'carousel-btn next-btn';
-    nextBtn.textContent = 'Próximo →';
-    nextBtn.disabled = currentIndex === total - 1;
-    nextBtn.addEventListener('click', () => onNavigate(1));
-
-    controls.appendChild(prevBtn);
-    controls.appendChild(indicator);
-    controls.appendChild(nextBtn);
-
-    return controls;
+    container.appendChild(list);
 }
 
 /**

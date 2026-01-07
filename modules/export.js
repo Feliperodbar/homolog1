@@ -5,13 +5,16 @@
 
 import { showToast } from './ui.js';
 import {
-    Document,
-    Packer,
-    Paragraph,
-    HeadingLevel,
-    TextRun,
-    ImageRun,
-    AlignmentType,
+  Document,
+  Packer,
+  Paragraph,
+  HeadingLevel,
+  TextRun,
+  ImageRun,
+  AlignmentType,
+  Table,
+  TableRow,
+  TableCell,
 } from 'docx';
 
 // Configuração de dimensões de exportação
@@ -77,28 +80,42 @@ export function buildExportHtml(steps, projectData = {}) {
     })
     .join('');
 
-  const projectMetaHtml = `
-    <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:12px">
-      <tr style="border-bottom:1px solid #e5e7eb">
-        <td style="padding:8px;font-weight:bold">Projeto:</td>
-        <td style="padding:8px">${escapeHtml(projectData.projectName || '')}</td>
-        <td style="padding:8px;font-weight:bold">Frente:</td>
-        <td style="padding:8px">${escapeHtml(projectData.frontName || '')}</td>
-      </tr>
-      <tr style="border-bottom:1px solid #e5e7eb">
-        <td style="padding:8px;font-weight:bold">Distribuidora:</td>
-        <td style="padding:8px">${escapeHtml(projectData.distributorName || '')}</td>
-        <td style="padding:8px;font-weight:bold">Responsável:</td>
-        <td style="padding:8px">${escapeHtml(projectData.responsible || '')}</td>
-      </tr>
-      <tr>
-        <td style="padding:8px;font-weight:bold">Data:</td>
-        <td style="padding:8px">${escapeHtml(projectData.projectDate || '')}</td>
-        <td style="padding:8px;font-weight:bold">Resultado Esperado:</td>
-        <td style="padding:8px">${escapeHtml(projectData.expectedResult || '')}</td>
-      </tr>
-    </table>
-  `;
+  const metaEntries = [
+    { label: 'Projeto', value: escapeHtml(projectData.projectName || '') },
+    { label: 'Frente', value: escapeHtml(projectData.frontName || '') },
+    { label: 'Distribuidora', value: escapeHtml(projectData.distributorName || '') },
+    { label: 'Responsável', value: escapeHtml(projectData.responsible || '') },
+    { label: 'Data', value: escapeHtml(projectData.projectDate || '') },
+    { label: 'Resultado Esperado', value: escapeHtml(projectData.expectedResult || '') },
+  ].filter(e => e.value && e.value.trim() !== '');
+
+  const projectMetaHtml = metaEntries.length ? `
+    <section style="margin-bottom:20px">
+      <h2 style="margin:0 0 10px;font-size:16px;color:#111827">Dados do Projeto</h2>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden">
+        <tbody>
+          ${(() => {
+            const half = Math.ceil(metaEntries.length / 2);
+            const col1 = metaEntries.slice(0, half);
+            const col2 = metaEntries.slice(half);
+            const rows = Math.max(col1.length, col2.length);
+            let html = '';
+            for (let i = 0; i < rows; i++) {
+              const left = col1[i];
+              const right = col2[i];
+              html += `
+                <tr>
+                  ${left ? `<td style="padding:8px;font-weight:bold;background:#f3f4f6;width:20%">${left.label}:</td><td style="padding:8px;border-left:1px solid #e5e7eb">${left.value}</td>` : `<td style="padding:8px;background:#f3f4f6;width:20%"></td><td style="padding:8px;border-left:1px solid #e5e7eb"></td>`}
+                  ${right ? `<td style="padding:8px;font-weight:bold;background:#f3f4f6;width:20%;border-left:1px solid #e5e7eb">${right.label}:</td><td style="padding:8px;border-left:1px solid #e5e7eb">${right.value}</td>` : `<td style="padding:8px;background:#f3f4f6;width:20%;border-left:1px solid #e5e7eb"></td><td style="padding:8px;border-left:1px solid #e5e7eb"></td>`}
+                </tr>
+              `;
+            }
+            return html;
+          })()}
+        </tbody>
+      </table>
+    </section>
+  ` : '';
 
   return `<!doctype html><html lang="pt-BR"><head>
     <meta charset="utf-8">
@@ -113,6 +130,10 @@ export function buildExportHtml(steps, projectData = {}) {
     <div class="docx-container">
       <h1>Homolog Report</h1>
       ${projectMetaHtml}
+      <section>
+        <h2 style="margin:0 0 12px;font-size:16px;color:#111827">Passos</h2>
+        ${stepsHtml || '<p style="color:#6b7280">Nenhum passo.</p>'}
+      </section>
     </div>
   </body></html>`;
 }
@@ -126,19 +147,22 @@ export function downloadHtml(steps, projectData = {}) {
   try {
     const now = new Date();
     const html = buildExportHtml(steps, projectData);
-        a.href = url;
-        a.download = `homolog_${now.toISOString().slice(0, 19).replace(/[:T]/g, '-')}.html`;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-            URL.revokeObjectURL(url);
-            a.remove();
-        }, 0);
-        showToast('HTML baixado');
-    } catch (e) {
-        console.warn('Falha ao baixar HTML:', e);
-        showToast('Não foi possível gerar o HTML');
-    }
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `homolog_${now.toISOString().slice(0, 19).replace(/[:T]/g, '-')}.html`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+      a.remove();
+    }, 0);
+    showToast('HTML baixado');
+  } catch (e) {
+    console.warn('Falha ao baixar HTML:', e);
+    showToast('Não foi possível gerar o HTML');
+  }
 }
 
 /**
@@ -259,61 +283,30 @@ export async function downloadDocx(steps, projectData = {}) {
       })
     );
 
-    // Metadados do projeto
+    // Metadados do projeto em tabela
     if (projectData.projectName || projectData.frontName || projectData.distributorName || projectData.responsible || projectData.projectDate || projectData.expectedResult) {
+      const metaEntriesDocx = [
+        { label: 'Projeto', value: projectData.projectName || '(não preenchido)' },
+        { label: 'Frente', value: projectData.frontName || '(não preenchido)' },
+        { label: 'Distribuidora', value: projectData.distributorName || '(não preenchido)' },
+        { label: 'Responsável', value: projectData.responsible || '(não preenchido)' },
+        { label: 'Data', value: projectData.projectDate || '(não preenchido)' },
+        { label: 'Resultado Esperado', value: projectData.expectedResult || '(não preenchido)' },
+      ];
+
       children.push(new Paragraph({ text: ' ' }));
-      
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({ text: 'Projeto: ', bold: true }),
-            new TextRun({ text: projectData.projectName || '(não preenchido)' }),
-          ],
-        })
-      );
+      children.push(new Paragraph({ text: 'Dados do Projeto', heading: HeadingLevel.HEADING_2 }));
 
       children.push(
-        new Paragraph({
-          children: [
-            new TextRun({ text: 'Frente: ', bold: true }),
-            new TextRun({ text: projectData.frontName || '(não preenchido)' }),
-          ],
-        })
-      );
-
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({ text: 'Distribuidora: ', bold: true }),
-            new TextRun({ text: projectData.distributorName || '(não preenchido)' }),
-          ],
-        })
-      );
-
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({ text: 'Responsável: ', bold: true }),
-            new TextRun({ text: projectData.responsible || '(não preenchido)' }),
-          ],
-        })
-      );
-
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({ text: 'Data: ', bold: true }),
-            new TextRun({ text: projectData.projectDate || '(não preenchido)' }),
-          ],
-        })
-      );
-
-      children.push(
-        new Paragraph({
-          children: [
-            new TextRun({ text: 'Resultado Esperado: ', bold: true }),
-            new TextRun({ text: projectData.expectedResult || '(não preenchido)' }),
-          ],
+        new Table({
+          rows: metaEntriesDocx.map((entry) =>
+            new TableRow({
+              children: [
+                new TableCell({ children: [ new Paragraph({ text: `${entry.label}:`, }) ] }),
+                new TableCell({ children: [ new Paragraph({ text: entry.value }) ] }),
+              ],
+            })
+          ),
         })
       );
 
@@ -423,4 +416,11 @@ export async function downloadDocx(steps, projectData = {}) {
     showToast('Falha no DOCX; baixando HTML');
     try {
       downloadHtml(steps, projectData);
+    } catch (htmlErr) {
+      console.warn('Fallback HTML também falhou:', htmlErr);
+      showToast('Não foi possível exportar');
+    }
+  }
+
 }
+

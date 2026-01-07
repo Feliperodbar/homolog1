@@ -17,8 +17,8 @@ import * as backend from './modules/backend.js';
 // ===== Estado =====
 let steps = [];
 let lastTriggerTs = 0;
-let carouselIndex = 0;
 let projectData = {};
+let captureMode = 'click'; // 'click' | 'select'
 
 // ===== Inicialização =====
 document.addEventListener('DOMContentLoaded', async () => {
@@ -36,7 +36,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Carregar passos persistidos
   steps = storage.load();
   projectData = storage.loadProjectData();
-  carouselIndex = 0;
   
   // Carregar dados do projeto nos inputs
   loadProjectDataToForm();
@@ -44,6 +43,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Conectar botões
   setupEventListeners();
+    const clearProjectBtn = document.getElementById('clearProjectBtn');
+    if (clearProjectBtn) {
+      clearProjectBtn.addEventListener('click', clearProjectData);
+    }
 
   // Iniciar polling de triggers
   startTriggerPolling();
@@ -59,6 +62,8 @@ function setupEventListeners() {
   const downloadHtmlBtn = document.getElementById('downloadHtmlBtn');
   const downloadDocxBtn = document.getElementById('downloadDocxBtn');
   const toggleExpandBtn = document.getElementById('toggleExpandBtn');
+  const modeClickBtn = document.getElementById('modeClickBtn');
+  const modeSelectBtn = document.getElementById('modeSelectBtn');
   const clearBtn = document.getElementById('clearStepsBtn');
   const videoEl = document.getElementById('screenVideo');
 
@@ -75,7 +80,6 @@ function setupEventListeners() {
     clearBtn.addEventListener('click', () => {
       if (confirm('Tem certeza que deseja limpar todos os passos?')) {
         steps = [];
-        carouselIndex = 0;
         renderSteps();
         storage.persist(steps);
       }
@@ -83,6 +87,12 @@ function setupEventListeners() {
   }
   if (videoEl) {
     videoEl.addEventListener('click', handleVideoClick);
+  }
+  if (modeClickBtn && modeSelectBtn) {
+    modeClickBtn.addEventListener('click', () => setCaptureMode('click'));
+    modeSelectBtn.addEventListener('click', () => setCaptureMode('select'));
+      // Inicializa legenda de modo abaixo dos botões
+      setCaptureMode('click');
   }
 
   // Conectar campos de dados do projeto
@@ -128,10 +138,42 @@ async function handleAddStep() {
   });
 
   steps.push(step);
-  carouselIndex = steps.length - 1; // Ir para o novo passo
   renderSteps();
   storage.persist(steps);
   ui.showToast('Passo adicionado');
+}
+
+/**
+ * Inicia fluxo de seleção e cria passo recortado
+ */
+async function startSelectionFlow() {
+  const mediaStream = capture.getMediaStream();
+  const video = document.getElementById('screenVideo');
+  if (!mediaStream || !video) {
+    ui.showToast('Inicie a captura para selecionar área');
+    return;
+  }
+  await capture.ensureVideoReady();
+
+  ui.startAreaSelection({
+    targetEl: video,
+    onComplete: (clientRect) => {
+      const rect = clientRectToVideoRect(video, clientRect);
+      const image = capture.captureScreenshotRegion(rect);
+      if (!image) {
+        ui.showToast('Falha ao recortar área');
+        return;
+      }
+      const step = stepsModule.createStep(image, {
+        title: `Área selecionada (${Math.round(rect.x)}, ${Math.round(rect.y)}) ${Math.round(rect.width)}x${Math.round(rect.height)}`,
+        description: 'Descreva a ação realizada na área selecionada.',
+      });
+      steps.push(step);
+      renderSteps();
+      storage.persist(steps);
+      ui.showToast('Passo criado pela seleção de área');
+    }
+  });
 }
 
 /**
@@ -140,13 +182,6 @@ async function handleAddStep() {
 function handleStepDelete(id) {
   const deletedIndex = steps.findIndex(s => s.id === id);
   steps = stepsModule.removeStep(steps, id);
-
-  // Ajustar índice do carrossel
-  if (steps.length === 0) {
-    carouselIndex = 0;
-  } else if (carouselIndex >= steps.length) {
-    carouselIndex = steps.length - 1;
-  }
 
   renderSteps();
   storage.persist(steps);
@@ -170,13 +205,21 @@ async function handleVideoClick(e) {
     return;
   }
 
+  if (captureMode === 'select') {
+    // No modo seleção, iniciar fluxo de seleção (não usar modo clique)
+    e.preventDefault();
+    e.stopPropagation();
+    await startSelectionFlow();
+    return;
+  }
+
+  // Modo clicar: cria passo com destaque e OCR
   const video = document.getElementById('screenVideo');
   const coords = getVideoFrameCoordsFromClient(video, e.clientX, e.clientY);
   if (!coords) {
     ui.showToast('Clique dentro do vídeo');
     return;
   }
-
   await addStepWithHighlight(coords);
 }
 
@@ -194,26 +237,14 @@ async function handleDownloadDocx() {
 // ===== Funções Auxiliares =====
 
 /**
- * Renderiza a lista de passos com gerenciamento de carrossel
+ * Renderiza a lista de passos
  */
 function renderSteps() {
   stepsModule.renderSteps(steps, {
     onDelete: handleStepDelete,
     onUpdate: handleStepUpdate,
     onImageClick: ui.openImageModal,
-    onNavigate: handleCarouselNavigate,
-  }, carouselIndex);
-}
-
-/**
- * Navega para o próximo ou anterior passo no carrossel
- */
-function handleCarouselNavigate(direction) {
-  const newIndex = carouselIndex + direction;
-  if (newIndex >= 0 && newIndex < steps.length) {
-    carouselIndex = newIndex;
-    renderSteps();
-  }
+  });
 }
 
 /**
@@ -238,6 +269,20 @@ function getVideoFrameCoordsFromClient(video, clientX, clientY) {
 }
 
 /**
+ * Converte retângulo em coordenadas do cliente para coordenadas de frame de vídeo
+ */
+function clientRectToVideoRect(video, clientRect) {
+  const bounds = video.getBoundingClientRect();
+  const scaleX = video.videoWidth / bounds.width;
+  const scaleY = video.videoHeight / bounds.height;
+  const x = Math.round(clientRect.x * scaleX);
+  const y = Math.round(clientRect.y * scaleY);
+  const width = Math.round(clientRect.width * scaleX);
+  const height = Math.round(clientRect.height * scaleY);
+  return { x, y, width, height };
+}
+
+/**
  * Adiciona passo com detecção de clique via OCR
  */
 async function addStepWithHighlight(coords) {
@@ -253,7 +298,6 @@ async function addStepWithHighlight(coords) {
   });
 
   steps.push(step);
-  carouselIndex = steps.length - 1; // Ir para o novo passo
   renderSteps();
   storage.persist(steps);
 
@@ -360,4 +404,40 @@ function loadProjectDataToForm() {
       element.value = projectData[fieldId];
     }
   });
+}
+
+/**
+ * Limpa campos de Dados do Projeto e persiste
+ */
+function clearProjectData() {
+  const fields = ['projectName', 'frontName', 'distributorName', 'responsible', 'projectDate', 'expectedResult'];
+  fields.forEach(fieldId => {
+    const el = document.getElementById(fieldId);
+    if (el) el.value = '';
+    projectData[fieldId] = '';
+  });
+  storage.persistProjectData(projectData);
+  ui.showToast('Campos de projeto limpos');
+}
+
+// ===== Modo de captura =====
+function setCaptureMode(mode) {
+  if (mode !== 'click' && mode !== 'select') return;
+  captureMode = mode;
+  const clickBtn = document.getElementById('modeClickBtn');
+  const selectBtn = document.getElementById('modeSelectBtn');
+  if (clickBtn && selectBtn) {
+    const isClick = captureMode === 'click';
+    clickBtn.classList.toggle('active', isClick);
+    selectBtn.classList.toggle('active', !isClick);
+    clickBtn.setAttribute('aria-pressed', String(isClick));
+    selectBtn.setAttribute('aria-pressed', String(!isClick));
+  }
+  ui.setStatus(mode === 'click' ? 'Modo: clicar para capturar' : 'Modo: seleção de área');
+  const modeInlineCaption = document.getElementById('modeInlineCaption');
+  if (modeInlineCaption) {
+    const isSelect = mode === 'select';
+    modeInlineCaption.textContent = isSelect ? 'Seleção de área' : '';
+    modeInlineCaption.classList.toggle('hidden', !isSelect);
+  }
 }

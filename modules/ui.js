@@ -92,6 +92,103 @@ export function updateExpandButtonLabel() {
     const btn = document.getElementById('toggleExpandBtn');
     if (!btn) return;
     const isFs = !!document.fullscreenElement;
-    btn.textContent = isFs ? 'Retrair captura' : 'Expandir captura';
     btn.setAttribute('aria-expanded', String(isFs));
+}
+
+/**
+ * Inicia seleção de área com retângulo expansível sobre um elemento alvo.
+ * @param {Object} opts
+ * @param {HTMLElement} opts.targetEl - Elemento alvo (ex.: vídeo)
+ * @param {(rect: {x:number,y:number,width:number,height:number})=>void} opts.onComplete - Callback com retângulo final relativo ao elemento
+ */
+export function startAreaSelection({ targetEl, onComplete }) {
+    if (!targetEl || typeof onComplete !== 'function') return;
+
+    const wrapper = targetEl.parentElement;
+    if (!wrapper) return;
+
+    const rectEl = document.createElement('div');
+    rectEl.className = 'selection-rect';
+    const layer = document.createElement('div');
+    layer.className = 'selection-layer';
+    layer.appendChild(rectEl);
+    wrapper.appendChild(layer);
+
+    let startX = 0, startY = 0;
+    let currentX = 0, currentY = 0;
+    let selecting = false;
+
+    const bounds = targetEl.getBoundingClientRect();
+
+    function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
+
+    function toLocal(x, y) {
+        return {
+            x: clamp(x - bounds.left, 0, bounds.width),
+            y: clamp(y - bounds.top, 0, bounds.height),
+        };
+    }
+
+    function onMouseDown(ev) {
+        if (ev.button !== 0) return;
+        selecting = true;
+        const p = toLocal(ev.clientX, ev.clientY);
+        startX = p.x; startY = p.y;
+        currentX = p.x; currentY = p.y;
+        updateRect();
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp, { once: true });
+    }
+
+    function onMouseMove(ev) {
+        if (!selecting) return;
+        const p = toLocal(ev.clientX, ev.clientY);
+        currentX = p.x; currentY = p.y;
+        updateRect();
+    }
+
+    function onMouseUp() {
+        selecting = false;
+        window.removeEventListener('mousemove', onMouseMove);
+        finishSelection();
+    }
+
+    function updateRect() {
+        const x = Math.min(startX, currentX);
+        const y = Math.min(startY, currentY);
+        const w = Math.abs(currentX - startX);
+        const h = Math.abs(currentY - startY);
+        rectEl.style.left = `${x}px`;
+        rectEl.style.top = `${y}px`;
+        rectEl.style.width = `${w}px`;
+        rectEl.style.height = `${h}px`;
+    }
+
+    function finishSelection() {
+        const x = Math.min(startX, currentX);
+        const y = Math.min(startY, currentY);
+        const w = Math.abs(currentX - startX);
+        const h = Math.abs(currentY - startY);
+        try { onComplete({ x, y, width: w, height: h }); } finally {
+            cleanup();
+        }
+    }
+
+    function onKey(ev) {
+        if (ev.key === 'Escape') {
+            cleanup();
+        }
+    }
+
+    function cleanup() {
+        try {
+            targetEl.removeEventListener('mousedown', onMouseDown);
+            window.removeEventListener('mousemove', onMouseMove);
+            window.removeEventListener('keydown', onKey);
+        } catch {}
+        if (layer?.parentElement) layer.parentElement.removeChild(layer);
+    }
+
+    targetEl.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('keydown', onKey);
 }

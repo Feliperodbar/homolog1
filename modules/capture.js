@@ -110,6 +110,42 @@ export function captureScreenshot(highlight = null) {
 }
 
 /**
+ * Captura screenshot recortando uma região do vídeo
+ * @param {{x:number,y:number,width:number,height:number}} region - Coordenadas no espaço do vídeo (videoWidth/videoHeight)
+ * @returns {string|null} Data URL da imagem recortada
+ */
+export function captureScreenshotRegion(region) {
+    const video = document.getElementById('screenVideo');
+    if (!video?.videoWidth || !video?.videoHeight) {
+        showToast('Vídeo indisponível para captura');
+        return null;
+    }
+
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    const sx = Math.max(0, Math.min(w, Math.round(region.x)));
+    const sy = Math.max(0, Math.min(h, Math.round(region.y)));
+    const sw = Math.max(1, Math.min(w - sx, Math.round(region.width)));
+    const sh = Math.max(1, Math.min(h - sy, Math.round(region.height)));
+
+    // Canvas de origem
+    const src = document.createElement('canvas');
+    src.width = w; src.height = h;
+    const sctx = src.getContext('2d');
+    if (!sctx) return null;
+    sctx.drawImage(video, 0, 0, w, h);
+
+    // Canvas de destino recortado
+    const dst = document.createElement('canvas');
+    dst.width = sw; dst.height = sh;
+    const dctx = dst.getContext('2d');
+    if (!dctx) return null;
+    dctx.drawImage(src, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    return dst.toDataURL('image/png', 0.9);
+}
+
+/**
  * Garante que o vídeo está pronto para captura
  */
 export async function ensureVideoReady() {

@@ -323,17 +323,25 @@ button:disabled {
 .steps-list {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 16px;
   flex: 1;
   min-height: 0;
 }
 
+.steps-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 980px) {
+  .steps-cards {
+    grid-template-columns: 1fr;
+  }
+}
+
 .carousel-container {
-  position: relative;
-  flex: 1;
-  display: flex;
-  align-items: stretch;
-  min-height: 0;
+  display: none;
 }
 
 .carousel-empty {
@@ -346,9 +354,54 @@ button:disabled {
   min-height: 300px;
 }
 
+.carousel-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+  margin-top: 12px;
+}
+
+.carousel-btn {
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: #0f1c34;
+  color: var(--text);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.carousel-btn:hover:not(:disabled) {
+  background: var(--primary);
+  border-color: var(--primary-700);
+  color: white;
+  transform: translateY(-1px);
+}
+
+.carousel-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.carousel-indicator {
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  padding: 8px 12px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 80px;
+}
+
 .step-card {
-  position: absolute;
-  inset: 0;
+  position: relative;
   display: grid;
   grid-template-columns: 1fr;
   gap: 12px;
@@ -357,65 +410,11 @@ button:disabled {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: #0f1c34;
-  opacity: 0;
-  transform: translateY(20px);
-  transition: all 0.3s ease;
-
-
-  .carousel-controls {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 12px;
-    padding-top: 16px;
-    border-top: 1px solid var(--border);
-    margin-top: 12px;
-  }
-
-  .carousel-btn {
-    padding: 8px 12px;
-    font-size: 13px;
-    font-weight: 600;
-    border: 1px solid var(--border);
-    background: #0f1c34;
-    color: var(--text);
-    border-radius: 8px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-  }
-
-  .carousel-btn:hover:not(:disabled) {
-    background: var(--primary);
-    border-color: var(--primary-700);
-    color: white;
-    transform: translateY(-1px);
-  }
-
-  .carousel-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .carousel-indicator {
-    text-align: center;
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--accent);
-    padding: 8px 12px;
-    background: rgba(59, 130, 246, 0.1);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    min-width: 80px;
-  }
-
-  pointer-events: none;
+  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease, opacity .2s ease;
 }
 
 .step-card.active {
-  position: relative;
   opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
 }
 
 .step-card.hidden {
@@ -435,18 +434,6 @@ button:disabled {
   font-weight: 700;
   color: var(--accent);
   letter-spacing: 0.3px;
-}
-
-.step-card {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
-  align-items: start;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: #0f1c34;
-  transition: border-color .2s ease, box-shadow .2s ease, transform .2s ease;
 }
 
 .step-card:hover {
@@ -470,6 +457,20 @@ button:disabled {
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--border);
+}
+
+/* Seleção de área sobre o vídeo */
+.selection-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.selection-rect {
+  position: absolute;
+  border: 2px dashed #3b82f6;
+  background: rgba(59, 130, 246, 0.15);
+  border-radius: 6px;
 }
 
 .step-thumb-overlay {
@@ -783,6 +784,31 @@ textarea:focus-visible {
   flex-direction: column;
   gap: 20px;
   min-height: 0;
+}
+
+/* Toggle de modo de captura */
+.mode-toggle {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  margin: 0 8px;
+}
+
+.mode-btn.active {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: #3b82f6;
+}
+
+/* legenda removida */
+/* .mode-caption {} */
+
+/* Ações na seção de dados do projeto */
+.project-data .actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 8px;
 }
 
 /* Painel de dados de projeto */

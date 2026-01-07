@@ -22,8 +22,28 @@
       <button id="startCaptureBtn" class="primary">Iniciar captura</button>
       <button id="stopCaptureBtn" class="secondary">Parar captura</button>
       <button id="addStepBtn" class="accent">Adicionar passo</button>
+      <div class="mode-toggle" role="group" aria-label="Modo de captura">
+        <button id="modeClickBtn" class="secondary icon-only mode-btn active" aria-pressed="true"
+          aria-label="Modo clicar para capturar" title="Modo clicar para capturar">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            class="feather feather-mouse-pointer">
+            <path d="M3 3l7 17 2-7 7-2-16-8z"></path>
+            <path d="M13 13l6 6"></path>
+          </svg>
+        </button>
+        <button id="modeSelectBtn" class="secondary icon-only mode-btn" aria-pressed="false"
+          aria-label="Modo seleção de área" title="Modo seleção de área">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            class="feather feather-square">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          </svg>
+        </button>
+
+      </div>
       <button id="toggleExpandBtn" class="secondary icon-only" aria-controls="videoWrapper" aria-expanded="false"
-        aria-label="Expandir captura">
+        aria-label="">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
           class="feather feather-maximize">
@@ -70,6 +90,17 @@
     <div class="sidebar">
       <section class="project-data">
         <h2>Dados do Projeto</h2>
+        <div class="actions">
+          <button id="clearProjectBtn" class="secondary icon-only" aria-label="Limpar campos de Dados do Projeto"
+            title="Limpar campos">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+              class="feather feather-eraser">
+              <path d="M16 3l5 5-9 9H7L2 12 11 3z"></path>
+              <path d="M7 17h6"></path>
+            </svg>
+          </button>
+        </div>
         <div class="project-fields">
           <div class="field-row">
             <div class="field-group">
