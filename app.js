@@ -19,6 +19,7 @@ let steps = [];
 let lastTriggerTs = 0;
 let projectData = {};
 let captureMode = 'click'; // 'click' | 'select'
+let showArrowOnCapture = false; // Controla se a seta aparece na captura
 
 // ===== Inicialização =====
 document.addEventListener('DOMContentLoaded', async () => {
@@ -65,6 +66,8 @@ function setupEventListeners() {
   const modeClickBtn = document.getElementById('modeClickBtn');
   const modeSelectBtn = document.getElementById('modeSelectBtn');
   const clearBtn = document.getElementById('clearStepsBtn');
+  const prevStepBtn = document.getElementById('prevStepBtn');
+  const nextStepBtn = document.getElementById('nextStepBtn');
   const videoEl = document.getElementById('screenVideo');
 
   if (startBtn) startBtn.addEventListener('click', handleStartCapture);
@@ -85,6 +88,28 @@ function setupEventListeners() {
       }
     });
   }
+  
+  // Listener para checkbox de seta
+  const showArrowCheckbox = document.getElementById('showArrowCheckbox');
+  if (showArrowCheckbox) {
+    showArrowCheckbox.addEventListener('change', (e) => {
+      showArrowOnCapture = e.target.checked;
+    });
+  }
+  
+  if (prevStepBtn) prevStepBtn.addEventListener('click', () => stepsModule.scrollCarouselLeft());
+  if (nextStepBtn) nextStepBtn.addEventListener('click', () => stepsModule.scrollCarouselRight());
+  
+  // Listener para atualizar botões de navegação quando scroll mudar
+  const stepsList = document.getElementById('stepsList');
+  if (stepsList) {
+    stepsList.addEventListener('scroll', () => {
+      const hasScroll = stepsList.scrollWidth > stepsList.clientWidth;
+      if (prevStepBtn) prevStepBtn.disabled = !hasScroll || stepsList.scrollLeft === 0;
+      if (nextStepBtn) nextStepBtn.disabled = !hasScroll || (stepsList.scrollLeft + stepsList.clientWidth >= stepsList.scrollWidth - 10);
+    });
+  }
+  
   if (videoEl) {
     videoEl.addEventListener('click', handleVideoClick);
   }
@@ -126,7 +151,7 @@ async function handleAddStep() {
   }
 
   await capture.ensureVideoReady();
-  const image = capture.captureScreenshot();
+  const image = capture.captureScreenshot(null, showArrowOnCapture);
   if (!image) {
     ui.showToast('Não foi possível capturar a tela');
     return;
@@ -289,7 +314,7 @@ async function addStepWithHighlight(coords) {
   const video = document.getElementById('screenVideo');
   await capture.ensureVideoReady();
 
-  const image = capture.captureScreenshot(coords);
+  const image = capture.captureScreenshot(coords, showArrowOnCapture);
   if (!image) return;
 
   const step = stepsModule.createStep(image, {

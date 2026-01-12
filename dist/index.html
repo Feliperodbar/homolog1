@@ -5,9 +5,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Homolog — Criador de Passos</title>
-  
-  <script type="module" crossorigin src="/assets/index-CAIeoY-U.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-iHmeootN.css">
+
+  <script type="module" crossorigin src="/assets/index-f9oaxYcE.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CLI5kPOM.css">
 </head>
 
 <body>
@@ -23,8 +23,28 @@
       <button id="startCaptureBtn" class="primary">Iniciar captura</button>
       <button id="stopCaptureBtn" class="secondary">Parar captura</button>
       <button id="addStepBtn" class="accent">Adicionar passo</button>
+      <div class="mode-toggle" role="group" aria-label="Modo de captura">
+        <button id="modeClickBtn" class="secondary icon-only mode-btn active" aria-pressed="true"
+          aria-label="Modo clicar para capturar" title="Modo clicar para capturar">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            class="feather feather-mouse-pointer">
+            <path d="M3 3l7 17 2-7 7-2-16-8z"></path>
+            <path d="M13 13l6 6"></path>
+          </svg>
+        </button>
+        <button id="modeSelectBtn" class="secondary icon-only mode-btn" aria-pressed="false"
+          aria-label="Modo seleção de área" title="Modo seleção de área">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            class="feather feather-square">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          </svg>
+        </button>
+
+      </div>
       <button id="toggleExpandBtn" class="secondary icon-only" aria-controls="videoWrapper" aria-expanded="false"
-        aria-label="Expandir captura">
+        aria-label="">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
           class="feather feather-maximize">
@@ -50,28 +70,103 @@
           <line x1="16" y1="16" x2="8" y2="16"></line>
         </svg>
       </button>
-      
-      
+
+
       <span id="statusText" class="status-pill" role="status" aria-live="polite">Pronto</span>
+
       <button id="clearStepsBtn" class="danger">Limpar passos</button>
     </div>
   </header>
 
   <main id="main" class="layout">
-    <section class="capture">
-      <div id="videoWrapper" class="video-wrapper">
-        <video id="screenVideo" autoplay muted playsinline></video>
-        <div id="videoOverlay" class="overlay hidden">Captura em andamento…</div>
-      </div>
-      <p class="hint">
-        Dica: após iniciar, clique sobre o vídeo para criar um passo com realce no ponteiro (ou use "Adicionar passo").
-      </p>
-    </section>
+    <div class="main-column">
+      <section class="capture">
+        <div id="videoWrapper" class="video-wrapper">
+          <video id="screenVideo" autoplay muted playsinline></video>
+          <div id="videoOverlay" class="overlay hidden">Captura em andamento…</div>
+        </div>
+        <p class="hint">
+          Dica: após iniciar, clique sobre o vídeo para criar um passo com realce no ponteiro (ou use "Adicionar
+          passo").
+        </p>
+        <label class="checkbox-label" title="Mostrar seta na captura">
+          <input type="checkbox" id="showArrowCheckbox" />
+          <span>Mostrar seta</span>
+        </label>
+      </section>
 
-    <section class="steps">
-      <h2>Passos</h2>
-      <div id="stepsList" class="steps-list"></div>
-    </section>
+      <section class="steps">
+        <div class="steps-header">
+          <h2>Passos</h2>
+          <div class="carousel-controls">
+            <button id="prevStepBtn" class="carousel-btn" aria-label="Passo anterior">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <button id="nextStepBtn" class="carousel-btn" aria-label="Próximo passo">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div id="stepsList" class="steps-list"></div>
+      </section>
+    </div>
+
+    <div class="sidebar">
+      <section class="project-data">
+        <h2>Dados do Projeto</h2>
+        <div class="actions">
+          <button id="clearProjectBtn" class="secondary icon-only" aria-label="Limpar campos de Dados do Projeto"
+            title="Limpar campos">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+              class="feather feather-eraser">
+              <path d="M16 3l5 5-9 9H7L2 12 11 3z"></path>
+              <path d="M7 17h6"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="project-fields">
+          <div class="field-row">
+            <div class="field-group">
+              <label for="projectName">Projeto</label>
+              <input type="text" id="projectName" placeholder="Nome do projeto" />
+            </div>
+            <div class="field-group">
+              <label for="frontName">Frente</label>
+              <input type="text" id="frontName" placeholder="Nome da frente" />
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field-group">
+              <label for="distributorName">Distribuidora</label>
+              <input type="text" id="distributorName" placeholder="Nome da distribuidora" />
+            </div>
+            <div class="field-group">
+              <label for="responsible">Responsável</label>
+              <input type="text" id="responsible" placeholder="Nome do responsável" />
+            </div>
+          </div>
+
+          <div class="field-row">
+            <div class="field-group">
+              <label for="projectDate">Data</label>
+              <input type="date" id="projectDate" />
+            </div>
+            <div class="field-group">
+              <label for="expectedResult">Resultado Esperado</label>
+              <input type="text" id="expectedResult" placeholder="Descreva o resultado esperado" />
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
   </main>
 
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>

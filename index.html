@@ -72,20 +72,49 @@
 
 
       <span id="statusText" class="status-pill" role="status" aria-live="polite">Pronto</span>
+
       <button id="clearStepsBtn" class="danger">Limpar passos</button>
     </div>
   </header>
 
   <main id="main" class="layout">
-    <section class="capture">
-      <div id="videoWrapper" class="video-wrapper">
-        <video id="screenVideo" autoplay muted playsinline></video>
-        <div id="videoOverlay" class="overlay hidden">Captura em andamento…</div>
-      </div>
-      <p class="hint">
-        Dica: após iniciar, clique sobre o vídeo para criar um passo com realce no ponteiro (ou use "Adicionar passo").
-      </p>
-    </section>
+    <div class="main-column">
+      <section class="capture">
+        <div id="videoWrapper" class="video-wrapper">
+          <video id="screenVideo" autoplay muted playsinline></video>
+          <div id="videoOverlay" class="overlay hidden">Captura em andamento…</div>
+        </div>
+        <p class="hint">
+          Dica: após iniciar, clique sobre o vídeo para criar um passo com realce no ponteiro (ou use "Adicionar
+          passo").
+        </p>
+        <label class="checkbox-label" title="Mostrar seta na captura">
+          <input type="checkbox" id="showArrowCheckbox" />
+          <span>Mostrar seta</span>
+        </label>
+      </section>
+
+      <section class="steps">
+        <div class="steps-header">
+          <h2>Passos</h2>
+          <div class="carousel-controls">
+            <button id="prevStepBtn" class="carousel-btn" aria-label="Passo anterior">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+            </button>
+            <button id="nextStepBtn" class="carousel-btn" aria-label="Próximo passo">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div id="stepsList" class="steps-list"></div>
+      </section>
+    </div>
 
     <div class="sidebar">
       <section class="project-data">
@@ -135,11 +164,6 @@
             </div>
           </div>
         </div>
-      </section>
-
-      <section class="steps">
-        <h2>Passos</h2>
-        <div id="stepsList" class="steps-list"></div>
       </section>
     </div>
   </main>

@@ -51,7 +51,7 @@ export function updateStep(steps, id, field, value) {
 }
 
 /**
- * Renderiza a lista de passos no DOM como cards verticais
+ * Renderiza a lista de passos no DOM como um carrossel horizontal
  * @param {Array} steps - Lista de passos
  * @param {Object} callbacks - Callbacks { onDelete, onUpdate, onImageClick }
  */
@@ -69,19 +69,17 @@ export function renderSteps(steps, { onDelete, onUpdate, onImageClick }) {
         return;
     }
 
-    const list = document.createElement('div');
-    list.className = 'steps-cards';
-
     steps.forEach((s, index) => {
         const card = createStepCard(s, index + 1, steps.length, {
             onDelete,
             onUpdate,
             onImageClick,
         });
-        list.appendChild(card);
+        container.appendChild(card);
     });
 
-    container.appendChild(list);
+    // Atualizar botões de navegação
+    updateCarouselButtons(steps.length);
 }
 
 /**
@@ -184,4 +182,48 @@ function createStepCard(step, stepNumber, totalSteps, { onDelete, onUpdate, onIm
     card.appendChild(actions);
 
     return card;
+}
+/**
+ * Atualiza o estado dos botões de navegação do carrossel
+ * @private
+ */
+function updateCarouselButtons(totalSteps) {
+    const prevBtn = document.getElementById('prevStepBtn');
+    const nextBtn = document.getElementById('nextStepBtn');
+    
+    if (!prevBtn || !nextBtn) return;
+    
+    const container = document.getElementById('stepsList');
+    if (!container) return;
+    
+    // Se não há scroll, desabilita os botões
+    const hasScroll = container.scrollWidth > container.clientWidth;
+    prevBtn.disabled = !hasScroll || container.scrollLeft === 0;
+    nextBtn.disabled = !hasScroll || (container.scrollLeft + container.clientWidth >= container.scrollWidth - 10);
+}
+
+/**
+ * Navega o carrossel para a esquerda
+ */
+export function scrollCarouselLeft() {
+    const container = document.getElementById('stepsList');
+    if (!container) return;
+    
+    const scrollAmount = 300;
+    container.scrollBy({ left: -scrollAmount, behavior: 'smooth' });
+    
+    setTimeout(() => updateCarouselButtons(0), 300);
+}
+
+/**
+ * Navega o carrossel para a direita
+ */
+export function scrollCarouselRight() {
+    const container = document.getElementById('stepsList');
+    if (!container) return;
+    
+    const scrollAmount = 300;
+    container.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    
+    setTimeout(() => updateCarouselButtons(0), 300);
 }

@@ -81,9 +81,10 @@ export function stopCapture() {
 /**
  * Captura screenshot do vídeo com destaque opcional
  * @param {Object} highlight - Coordenadas para destaque { x: number, y: number }
+ * @param {boolean} showArrow - Se deve mostrar a seta (padrão: true)
  * @returns {string|null} Data URL da imagem ou null
  */
-export function captureScreenshot(highlight = null) {
+export function captureScreenshot(highlight = null, showArrow = true) {
     const video = document.getElementById('screenVideo');
     if (!video?.videoWidth || !video?.videoHeight) {
         showToast('Vídeo indisponível para captura');
@@ -103,7 +104,7 @@ export function captureScreenshot(highlight = null) {
 
     if (highlight && typeof highlight.x === 'number' && typeof highlight.y === 'number') {
         const baseRadius = Math.max(18, Math.round(Math.min(w, h) * 0.025));
-        drawPointerHighlight(ctx, highlight.x, highlight.y, baseRadius);
+        drawPointerHighlight(ctx, highlight.x, highlight.y, baseRadius, showArrow);
     }
 
     return canvas.toDataURL('image/png', 0.9);
@@ -169,8 +170,9 @@ export async function ensureVideoReady() {
  * @param {number} x - Coordenada X
  * @param {number} y - Coordenada Y
  * @param {number} baseRadius - Raio base em pixels
+ * @param {boolean} showArrow - Se deve desenhar a seta (padrão: true)
  */
-function drawPointerHighlight(ctx, x, y, baseRadius = 18) {
+function drawPointerHighlight(ctx, x, y, baseRadius = 18, showArrow = true) {
     const r = baseRadius;
 
     // Brilho vermelho ao redor
@@ -182,44 +184,46 @@ function drawPointerHighlight(ctx, x, y, baseRadius = 18) {
     ctx.arc(x, y, r * 1.6, 0, Math.PI * 2);
     ctx.fill();
 
-    // Desenhar seta vermelha (-45°)
-    const size = r * 1.2;
-    const headLen = size * 0.58;
-    const headWidth = size * 0.50;
-    const tailLen = size * 0.9;
-    const tailWidth = Math.max(2, Math.round(size * 0.14));
-    const angle = -Math.PI / 4;
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
+    // Desenhar seta vermelha (-45°) apenas se showArrow for true
+    if (showArrow) {
+        const size = r * 1.2;
+        const headLen = size * 0.58;
+        const headWidth = size * 0.50;
+        const tailLen = size * 0.9;
+        const tailWidth = Math.max(2, Math.round(size * 0.14));
+        const angle = -Math.PI / 4;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
 
-    const rot = (px, py) => ({
-        x: x + px * cos - py * sin,
-        y: y + px * sin + py * cos,
-    });
+        const rot = (px, py) => ({
+            x: x + px * cos - py * sin,
+            y: y + px * sin + py * cos,
+        });
 
-    const points = [
-        rot(0, 0),
-        rot(-headWidth / 2, headLen),
-        rot(-tailWidth / 2, headLen),
-        rot(-tailWidth / 2, headLen + tailLen),
-        rot(tailWidth / 2, headLen + tailLen),
-        rot(tailWidth / 2, headLen),
-        rot(headWidth / 2, headLen),
-    ];
+        const points = [
+            rot(0, 0),
+            rot(-headWidth / 2, headLen),
+            rot(-tailWidth / 2, headLen),
+            rot(-tailWidth / 2, headLen + tailLen),
+            rot(tailWidth / 2, headLen + tailLen),
+            rot(tailWidth / 2, headLen),
+            rot(headWidth / 2, headLen),
+        ];
 
-    // Preenchimento
-    ctx.fillStyle = 'rgba(239,68,68,1)';
-    ctx.beginPath();
-    ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
-        ctx.lineTo(points[i].x, points[i].y);
+        // Preenchimento
+        ctx.fillStyle = 'rgba(239,68,68,1)';
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.closePath();
+        ctx.fill();
+
+        // Contorno
+        ctx.strokeStyle = 'rgba(220,38,38,1)';
+        ctx.lineWidth = Math.max(2, Math.round(r * 0.16));
+        ctx.lineJoin = 'round';
+        ctx.stroke();
     }
-    ctx.closePath();
-    ctx.fill();
-
-    // Contorno
-    ctx.strokeStyle = 'rgba(220,38,38,1)';
-    ctx.lineWidth = Math.max(2, Math.round(r * 0.16));
-    ctx.lineJoin = 'round';
-    ctx.stroke();
 }
