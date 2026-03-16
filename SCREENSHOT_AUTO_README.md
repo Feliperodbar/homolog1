@@ -6,7 +6,7 @@ Script Python que captura screenshots de navegadores ao clicar com o botão esqu
 
 - ✅ Escuta global de mouse (funciona em background)
 - ✅ Detecta automaticamente navegadores: Chrome, Edge, Brave, Firefox
-- ✅ Captura APENAS a janela ativa do navegador
+- ✅ Captura a janela ativa ou o monitor inteiro (incluindo barra do Windows com data/hora)
 - ✅ Salva em PNG com nome sanitizado + timestamp
 - ✅ Debounce para evitar múltiplas capturas rápidas
 - ✅ Tratamento robusto de erros
@@ -93,6 +93,9 @@ TITLE_FILTER = None
 
 # Tempo mínimo entre capturas (milissegundos)
 DEBOUNCE_MS = 150
+
+# Incluir barra do Windows (data/hora) capturando monitor inteiro
+INCLUDE_WINDOWS_TASKBAR = True
 ```
 
 ## 🎮 Como Usar

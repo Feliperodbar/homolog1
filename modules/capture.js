@@ -8,6 +8,32 @@ import { showToast, setStatus } from './ui.js';
 let mediaStream = null;
 
 /**
+ * Solicita captura de tela priorizando monitor inteiro.
+ * Isso permite incluir a barra de tarefas do Windows (data/hora).
+ * @returns {Promise<MediaStream>}
+ */
+async function requestDisplayMedia() {
+    try {
+        return await navigator.mediaDevices.getDisplayMedia({
+            video: {
+                cursor: 'always',
+                preferCurrentTab: false,
+                displaySurface: 'monitor',
+                monitorTypeSurfaces: 'include',
+                selfBrowserSurface: 'exclude',
+            },
+            audio: false,
+        });
+    } catch {
+        // Fallback para navegadores que não suportam todas as constraints acima.
+        return navigator.mediaDevices.getDisplayMedia({
+            video: { cursor: 'always', preferCurrentTab: false },
+            audio: false,
+        });
+    }
+}
+
+/**
  * Obtém o mediaStream ativo
  * @returns {MediaStream|null}
  */
@@ -20,16 +46,19 @@ export function getMediaStream() {
  */
 export async function startCapture() {
     try {
-        mediaStream = await navigator.mediaDevices.getDisplayMedia({
-            video: { cursor: 'always', preferCurrentTab: true },
-            audio: false,
-        });
+        mediaStream = await requestDisplayMedia();
 
         const videoTrack = mediaStream.getVideoTracks()[0];
         if (videoTrack) {
             videoTrack.onended = () => {
                 stopCapture();
             };
+
+            // Só monitor inteiro inclui a barra do Windows (com data/hora).
+            const { displaySurface } = videoTrack.getSettings();
+            if (displaySurface && displaySurface !== 'monitor') {
+                showToast('Para incluir data/hora da barra do Windows, selecione Tela inteira');
+            }
         }
 
         const video = document.getElementById('screenVideo');

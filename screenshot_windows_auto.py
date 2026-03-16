@@ -75,6 +75,10 @@ TITLE_FILTER = None
 # Debounce em milissegundos (tempo mínimo entre capturas)
 DEBOUNCE_MS = 150
 
+# Se True, captura o monitor inteiro da janela ativa (inclui barra do Windows com data/hora)
+# Se False, captura apenas a janela ativa do navegador
+INCLUDE_WINDOWS_TASKBAR = True
+
 # Mapeamento de classes de janelas para navegadores
 BROWSER_CLASSES = {
     "Chrome_WidgetWin_1": ["chrome", "edge", "brave"],
@@ -198,6 +202,25 @@ class BrowserScreenshotCapture:
         except Exception as e:
             print(f"⚠️  Erro ao obter coordenadas da janela: {e}")
             return None
+
+    def get_monitor_rect(self, hwnd: int) -> Optional[Tuple[int, int, int, int]]:
+        """
+        Obtém as coordenadas do monitor onde a janela está.
+        Retorna: (left, top, right, bottom) ou None
+        """
+        try:
+            monitor = win32api.MonitorFromWindow(hwnd, win32con.MONITOR_DEFAULTTONEAREST)
+            info = win32api.GetMonitorInfo(monitor)
+            left, top, right, bottom = info["Monitor"]
+
+            if right <= left or bottom <= top:
+                print(f"⚠️  Dimensões inválidas do monitor: {info['Monitor']}")
+                return None
+
+            return left, top, right, bottom
+        except Exception as e:
+            print(f"⚠️  Erro ao obter coordenadas do monitor: {e}")
+            return None
     
     def capture_window(self, hwnd: int, title: str, nav_type: str) -> bool:
         """
@@ -205,8 +228,8 @@ class BrowserScreenshotCapture:
         Retorna: True se capturado com sucesso, False caso contrário.
         """
         try:
-            # Obter coordenadas
-            rect = self.get_window_rect(hwnd)
+            # Obter coordenadas (monitor inteiro ou janela ativa)
+            rect = self.get_monitor_rect(hwnd) if INCLUDE_WINDOWS_TASKBAR else self.get_window_rect(hwnd)
             if rect is None:
                 return False
             
@@ -237,9 +260,11 @@ class BrowserScreenshotCapture:
             
             # Salvar arquivo
             image.save(str(filepath), "PNG")
+
+            capture_mode = "Monitor inteiro (com barra do Windows)" if INCLUDE_WINDOWS_TASKBAR else "Janela ativa"
             
             print(f"✅ Screenshot capturado: {filename}")
-            print(f"   Navegador: {nav_type} | Tamanho: {width}x{height} | Título: {title[:50]}")
+            print(f"   Navegador: {nav_type} | Tamanho: {width}x{height} | Modo: {capture_mode} | Título: {title[:50]}")
             
             return True
         
@@ -325,6 +350,7 @@ class BrowserScreenshotCapture:
         print(f"   - Debounce: {DEBOUNCE_MS}ms")
         print(f"   - Navegador: {BROWSER_FILTER or 'Todos'}")
         print(f"   - Filtro de título: {TITLE_FILTER or 'Nenhum'}")
+        print(f"   - Captura barra Windows: {'Sim' if INCLUDE_WINDOWS_TASKBAR else 'Não'}")
         print(f"   - Saída: {OUTPUT_DIR}")
         print("\n⌨️  Atalhos:")
         print("   - Botão Esquerdo do Mouse: Capturar janela ativa")
