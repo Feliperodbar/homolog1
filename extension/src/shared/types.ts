@@ -70,6 +70,34 @@ export interface InteractionEvent {
   isTrusted: boolean;
 }
 
+export type ActionType = 'click' | 'tap' | 'press' | 'unknown';
+
+export interface RecordingStep {
+  stepId: string;
+  sessionId: string;
+  sequence: number;
+  actionType: ActionType;
+  interactionId: string;
+  target: TargetElementInfo;
+  viewportPoint: Point2D;
+  elementRect: RectInfo;
+  url: string;
+  pageTitle: string;
+  viewportSize: { width: number; height: number };
+  devicePixelRatio: number;
+  stableSelector: string;
+  inputSource: 'mouse' | 'touch' | 'pen' | 'unknown';
+  screenshotDataUrl: string;
+  screenshotFormat: 'image/png' | 'image/jpeg';
+  screenshotWidthPx: number;
+  screenshotHeightPx: number;
+  screenshotSizeBytes: number;
+  description: string;
+  timestamp: number;
+  tabId: number | null;
+  isTrusted: boolean;
+}
+
 export type RuntimeMessageType =
   | 'GET_STATE'
   | 'START'
@@ -79,8 +107,12 @@ export type RuntimeMessageType =
   | 'INCREMENT_STEP'
   | 'RESET'
   | '__RECORD_INTERACTION__'
+  | '__REQUEST_SCREENSHOT__'
   | '__STATE_CHANGED__'
-  | '__GET_LAST_INTERACTION__';
+  | '__STEP_RECORDED__'
+  | '__GET_LAST_INTERACTION__'
+  | '__GET_LAST_STEP__'
+  | '__LIST_STEPS__';
 
 export interface RuntimeMessage {
   type: RuntimeMessageType;
@@ -91,5 +123,8 @@ export interface RuntimeResponse {
   ok: boolean;
   state?: RecordingSession;
   lastInteraction?: InteractionEvent;
+  lastStep?: RecordingStep;
+  steps?: Array<RecordingStep>;
+  tabId?: number;
   error?: string;
 }

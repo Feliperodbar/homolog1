@@ -1,7 +1,8 @@
 import { isRestrictedUrl, RestrictionInfo } from '../shared/restrictedUrls';
 import {
-  DEDUPLICATION as _DEDUPLICATION,
+  _DEDUPLICATION,
   RESTRICTED_PAGE_REASONS,
+  SCREENSHOT,
   STORAGE_KEY_RECORDING,
 } from '../shared/constants';
 import { InteractionDeduplicator } from '../shared/dedupe';
@@ -19,29 +20,41 @@ import type {
 } from '../shared/types';
 
 const BANNER_ID = '__homolog_restricted_banner__';
-const OWN_ELEMENT_MARKERS: ReadonlyArray<string> = [BANNER_ID];
+const MARKER_ID = SCREENSHOT.POINTER_MARKER_ID;
+const OWN_ELEMENT_MARKERS: ReadonlyArray<string> = [BANNER_ID, MARKER_ID];
+const FINALIZATION_DELAY_MS = 150;
+const MIN_INTERVAL_BETWEEN_CAPTURES_MS = SCREENSHOT.MIN_INTERVAL_BETWEEN_CAPTURES_MS;
+const REQUEST_TIMEOUT_MS = SCREENSHOT.TIMEOUT_MS;
+
 const pending = new Map<
   string,
   { createdAt: number; timeoutId: ReturnType<typeof setTimeout> | null }
 >();
 
 const logger = {
-  info: (...args: unknown[]) => console.debug('[homolog:cs]', ...args),
+  info: (...args: unknown[]) => console.log('[homolog:cs]', ...args),
   warn: (...args: unknown[]) => console.warn('[homolog:cs]', ...args),
+  error: (...args: unknown[]) => console.error('[homolog:cs]', ...args),
 };
 
 const state: {
   recording: boolean;
   sessionId: string | null;
+  ownTabId: number | null;
   restricted: boolean;
   dedup: InteractionDeduplicator;
   listenerAttached: boolean;
+  lastCaptureStartedAt: number;
+  markerTimeoutIds: Array<number>;
 } = {
   recording: false,
   sessionId: null,
+  ownTabId: null,
   restricted: false,
   dedup: new InteractionDeduplicator(),
   listenerAttached: false,
+  lastCaptureStartedAt: 0,
+  markerTimeoutIds: [],
 };
 
 function getRestrictionInfo(): RestrictionInfo | null {
@@ -125,6 +138,86 @@ function renderBanner(info: RestrictionInfo): void {
   }
 }
 
+function insertClickMarker(x: number, y: number): string | null {
+  try {
+    if (typeof document === 'undefined') return null;
+    let marker = document.getElementById(MARKER_ID);
+    if (!marker) {
+      marker = document.createElement('div');
+      marker.id = MARKER_ID;
+      marker.setAttribute('data-homolog', 'marker');
+      marker.setAttribute('aria-hidden', 'true');
+      const radius = SCREENSHOT.POINTER_MARKER_RADIUS_PX;
+      const outer = radius * 2;
+      marker.style.cssText = [
+        'all: initial',
+        'position: fixed',
+        `left: ${x - radius}px`,
+        `top: ${y - radius}px`,
+        `width: ${outer}px`,
+        `height: ${outer}px`,
+        'border-radius: 999px',
+        'border: 2px solid #dc2626',
+        'box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.22), 0 4px 14px rgba(0,0,0,0.25)',
+        'pointer-events: none',
+        'z-index: 2147483646',
+        'mix-blend-mode: normal',
+        'will-change: left, top, opacity',
+        'contain: layout style paint',
+      ].join(';');
+      try {
+        document.documentElement.appendChild(marker);
+      } catch {
+        try {
+          document.body.appendChild(marker);
+        } catch {
+          return null;
+        }
+      }
+    } else {
+      const radius = SCREENSHOT.POINTER_MARKER_RADIUS_PX;
+      marker.style.left = `${x - radius}px`;
+      marker.style.top = `${y - radius}px`;
+      marker.style.opacity = '1';
+      marker.style.display = 'block';
+    }
+    return MARKER_ID;
+  } catch {
+    return null;
+  }
+}
+
+function removeClickMarker(): void {
+  try {
+    if (typeof document === 'undefined') return;
+    const el = document.getElementById(MARKER_ID);
+    if (!el) return;
+    el.style.opacity = '0';
+    const toId = window.setTimeout(() => {
+      try {
+        el.remove();
+      } catch {
+        /* noop */
+      }
+    }, 120);
+    state.markerTimeoutIds.push(Number(toId));
+    if (state.markerTimeoutIds.length > 12) {
+      const old = state.markerTimeoutIds.shift();
+      if (old) clearTimeout(old);
+    }
+  } catch {
+    /* noop */
+  }
+}
+
+function clearAllMarkerTimeouts(): void {
+  while (state.markerTimeoutIds.length) {
+    const id = state.markerTimeoutIds.shift();
+    if (id) clearTimeout(id);
+  }
+  removeClickMarker();
+}
+
 function isOwnElement(target: EventTarget | null): boolean {
   if (!target) return false;
   try {
@@ -192,23 +285,44 @@ function resolveInputSource(ev: PointerEvent | null): InteractionEvent['inputSou
   return 'unknown';
 }
 
-function sendMessage(msg: RuntimeMessage): Promise<RuntimeResponse> {
+function sendMessage(
+  msg: RuntimeMessage,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+): Promise<RuntimeResponse> {
   return new Promise((resolve) => {
+    let settled = false;
+    const timer = window.setTimeout(
+      () => {
+        if (settled) return;
+        settled = true;
+        resolve({ ok: false, error: `timeout apos ${timeoutMs}ms` });
+      },
+      Math.max(500, timeoutMs),
+    );
+    const finish = (r: RuntimeResponse) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(r);
+    };
     try {
       chrome.runtime.sendMessage(msg, (resp: unknown) => {
         const err = chrome.runtime?.lastError;
         if (err && !resp) {
-          resolve({ ok: false, error: err.message ?? 'runtime error' });
+          finish({ ok: false, error: err.message ?? 'runtime error' });
           return;
         }
         if (typeof resp === 'object' && resp !== null && 'ok' in resp) {
-          resolve(resp as RuntimeResponse);
+          finish(resp as RuntimeResponse);
           return;
         }
-        resolve({ ok: false, error: 'resposta invalida do bg' });
+        finish({ ok: false, error: 'resposta invalida do bg' });
       });
     } catch (e) {
-      resolve({ ok: false, error: e instanceof Error ? e.message : String(e) });
+      finish({
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
   });
 }
@@ -216,6 +330,7 @@ function sendMessage(msg: RuntimeMessage): Promise<RuntimeResponse> {
 async function finalizeInteraction(id: string, interaction: InteractionEvent): Promise<void> {
   if (!pending.has(id)) return;
   pending.delete(id);
+
   const msgValid = validateRuntimeMessage({
     type: '__RECORD_INTERACTION__' as RuntimeMessageType,
     payload: { interaction },
@@ -229,22 +344,62 @@ async function finalizeInteraction(id: string, interaction: InteractionEvent): P
     logger.warn('interacao invalida antes do envio', evValid.error);
     return;
   }
+
+  const now = Date.now();
+  if (now - state.lastCaptureStartedAt < MIN_INTERVAL_BETWEEN_CAPTURES_MS) {
+    logger.info(
+      `throttle captura: intervalo ${now - state.lastCaptureStartedAt}ms < ${MIN_INTERVAL_BETWEEN_CAPTURES_MS}ms; skip screenshot mas contabiliza interacao`,
+    );
+    try {
+      const r = await sendMessage(msgValid.value);
+      if (!r.ok) {
+        logger.warn('bg rejeitou interacao throttle', r.error);
+        return;
+      }
+      state.dedup.recordFromInteraction(interaction);
+    } catch (e) {
+      logger.warn('erro envio throttle', e);
+    }
+    return;
+  }
+  state.lastCaptureStartedAt = now;
+
+  let markerRemoved = false;
+  const removeMarkerSafe = () => {
+    if (markerRemoved) return;
+    markerRemoved = true;
+    removeClickMarker();
+  };
+
   try {
-    const r = await sendMessage(msgValid.value);
-    if (!r.ok) {
-      logger.warn('bg rejeitou interacao', r.error);
+    insertClickMarker(interaction.viewportPoint.x, interaction.viewportPoint.y);
+    await new Promise<void>((r) => window.setTimeout(() => r(), 60));
+
+    const requestMsg = validateRuntimeMessage({
+      type: '__REQUEST_SCREENSHOT__' as RuntimeMessageType,
+      payload: { interaction },
+    });
+    if (!requestMsg.ok) {
+      logger.warn('request msg invalida', requestMsg.error);
+      return;
+    }
+    const resp = await sendMessage(requestMsg.value);
+    if (!resp.ok) {
+      logger.warn('bg rejeitou screenshot / step', resp.error);
       return;
     }
     state.dedup.recordFromInteraction(interaction);
   } catch (e) {
-    logger.warn('erro ao enviar interacao', e);
+    logger.warn('erro ao enviar request screenshot', e);
+  } finally {
+    removeMarkerSafe();
   }
 }
 
 function scheduleInteractionFinalization(
   id: string,
   interaction: InteractionEvent,
-  delayMs = 180,
+  delayMs = FINALIZATION_DELAY_MS,
 ): void {
   if (pending.has(id)) return;
   const timeoutId = setTimeout(() => {
@@ -258,6 +413,8 @@ function cancelPendingInteractions(): void {
     if (v.timeoutId !== null) clearTimeout(v.timeoutId);
   }
   pending.clear();
+  clearAllMarkerTimeouts();
+  state.lastCaptureStartedAt = 0;
 }
 
 function onPageHideSoon(): void {
@@ -362,10 +519,24 @@ function detachListener(): void {
 
 function applySessionState(s: RecordingSession | null): void {
   const wasRecording = state.recording;
-  state.recording = s?.state === 'recording';
+  const baseRecording = s?.state === 'recording';
   state.sessionId = s?.sessionId ?? null;
-  if (state.restricted) {
-    state.recording = false;
+  if (baseRecording && s?.tabId !== null && s?.tabId !== undefined && state.ownTabId !== null) {
+    if (s.tabId !== state.ownTabId) {
+      logger.info(
+        `esta aba #${state.ownTabId} nao e a aba gravada #${s.tabId}; desativando recording aqui`,
+      );
+      state.recording = false;
+    } else {
+      state.recording = !state.restricted;
+    }
+  } else if (baseRecording && state.ownTabId === null) {
+    logger.info(
+      'ownTabId ainda desconhecido; permitindo recording temporariamente (SW filtrara sender.tab.id)',
+    );
+    state.recording = !state.restricted;
+  } else {
+    state.recording = baseRecording && !state.restricted;
   }
   if (!wasRecording && state.recording) {
     state.dedup.clear();
@@ -380,7 +551,30 @@ function applySessionState(s: RecordingSession | null): void {
     state.recording,
     'sessionId=',
     state.sessionId?.slice(0, 8),
+    'ownTabId=',
+    state.ownTabId,
+    'session.tabId=',
+    s?.tabId,
   );
+  if (!state.recording) {
+    clearAllMarkerTimeouts();
+  }
+}
+
+async function resolveOwnTabId(): Promise<void> {
+  try {
+    const msgValid = validateRuntimeMessage({
+      type: '__GET_MY_TAB_ID__' as RuntimeMessageType,
+    });
+    if (!msgValid.ok) return;
+    const resp = await sendMessage(msgValid.value, 2500);
+    if (resp.ok && typeof (resp as Record<string, unknown>).tabId === 'number') {
+      state.ownTabId = (resp as Record<string, unknown>).tabId as number;
+      logger.info('content ownTabId resolvido para', state.ownTabId);
+    }
+  } catch (e) {
+    logger.warn('resolveOwnTabId falhou', e);
+  }
 }
 
 async function fetchInitialState(): Promise<void> {
@@ -435,46 +629,30 @@ function initPageHideGuard(): void {
 }
 
 function init(): void {
+  try {
+    const locationHref = typeof window !== 'undefined' ? window.location?.href ?? '' : '';
+    logger.info(
+      `content script iniciado readyState=${document?.readyState} location=${locationHref.slice(0, 160)}`,
+    );
+  } catch {
+    logger.info('content script iniciado (sem window disponivel)');
+  }
   const restriction = getRestrictionInfo();
   state.restricted = !!restriction;
-  if (restriction) {
-    if (document.readyState === 'loading') {
-      document.addEventListener(
-        'DOMContentLoaded',
-        () => {
-          renderBanner(restriction);
-          void fetchInitialState();
-          initStorageListener();
-          initRuntimeListener();
-          initPageHideGuard();
-        },
-        { once: true },
-      );
-    } else {
-      renderBanner(restriction);
-      void fetchInitialState();
+  const boot = () => {
+    void (async () => {
+      if (restriction) renderBanner(restriction);
+      await resolveOwnTabId();
+      await fetchInitialState();
       initStorageListener();
       initRuntimeListener();
       initPageHideGuard();
-    }
-    return;
-  }
-  if (document.readyState === 'loading') {
-    document.addEventListener(
-      'DOMContentLoaded',
-      () => {
-        void fetchInitialState();
-        initStorageListener();
-        initRuntimeListener();
-        initPageHideGuard();
-      },
-      { once: true },
-    );
+    })();
+  };
+  if (typeof document !== 'undefined' && document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
   } else {
-    void fetchInitialState();
-    initStorageListener();
-    initRuntimeListener();
-    initPageHideGuard();
+    boot();
   }
 }
 

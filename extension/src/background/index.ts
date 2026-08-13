@@ -4,18 +4,47 @@ import {
   applyTransition,
   reset as resetSession,
 } from '../shared/stateMachine';
-import {
+import type {
   InteractionEvent,
   RecordingSession,
+  RecordingStep,
   RuntimeMessage,
   RuntimeResponse,
 } from '../shared/types';
-import { STORAGE_KEY_LAST_INTERACTION, STORAGE_KEY_RECORDING } from '../shared/constants';
-import { validateInteractionEvent, validateRuntimeMessage } from '../shared/messageValidator';
+import {
+  SCREENSHOT,
+  STORAGE_KEY_ACTIVE_PROJECT_ID,
+  STORAGE_KEY_ACTIVE_SESSION_ID,
+  STORAGE_KEY_IDB_MIGRATION_DONE,
+  STORAGE_KEY_LAST_INTERACTION,
+  STORAGE_KEY_LAST_STEP,
+  STORAGE_KEY_RECORDING,
+  STORAGE_KEY_STEPS,
+} from '../shared/constants';
+import {
+  validateInteractionEvent,
+  validateRecordingStep,
+  validateRuntimeMessage,
+} from '../shared/messageValidator';
+import {
+  buildRecordingStep,
+  compressScreenshotDataUrl,
+} from '../shared/screenshotUtils';
+import {
+  addStepWithScreenshot,
+  createProject,
+  listProjects,
+  migrateFromLegacyChromeStorage,
+  upsertSessionFromRecordingSession,
+  getSaveIndicatorSnapshot,
+  subscribeSaveIndicator,
+  getSessionById,
+} from '../shared/storage/repository';
 
 const logger = {
-  info: (...args: unknown[]) => console.debug('[homolog:bg]', ...args),
+  info: (...args: unknown[]) => console.log('[homolog:bg]', ...args),
   warn: (...args: unknown[]) => console.warn('[homolog:bg]', ...args),
+  error: (...args: unknown[]) => console.error('[homolog:bg]', ...args),
 };
 
 function setActionBadge(state: RecordingSession): void {
@@ -103,6 +132,66 @@ async function saveLastInteraction(interaction: InteractionEvent | null): Promis
   }
 }
 
+async function loadSteps(sessionId?: string): Promise<Array<RecordingStep>> {
+  try {
+    const raw = await chrome.storage.local.get(STORAGE_KEY_STEPS);
+    const arr = raw?.[STORAGE_KEY_STEPS];
+    if (!Array.isArray(arr)) return [];
+    const out: Array<RecordingStep> = [];
+    for (const item of arr) {
+      const v = validateRecordingStep(item);
+      if (!v.ok) continue;
+      if (sessionId && v.value.sessionId !== sessionId) continue;
+      out.push(v.value);
+    }
+    out.sort((a, b) => a.sequence - b.sequence);
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+async function saveSteps(steps: Array<RecordingStep>): Promise<void> {
+  try {
+    const max = SCREENSHOT.MAX_STEPS_IN_STORAGE;
+    const slice = steps.length > max ? steps.slice(steps.length - max) : steps;
+    await chrome.storage.local.set({ [STORAGE_KEY_STEPS]: slice });
+  } catch (e) {
+    logger.warn('saveSteps falhou (storage pode estar cheio)', e);
+  }
+}
+
+async function clearStepsForNewSession(): Promise<void> {
+  try {
+    await chrome.storage.local.remove([STORAGE_KEY_STEPS, STORAGE_KEY_LAST_STEP]);
+  } catch {
+    /* noop */
+  }
+}
+
+async function loadLastStep(): Promise<RecordingStep | null> {
+  try {
+    const raw = await chrome.storage.local.get(STORAGE_KEY_LAST_STEP);
+    const parsed = raw?.[STORAGE_KEY_LAST_STEP];
+    const v = validateRecordingStep(parsed);
+    return v.ok ? v.value : null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveLastStep(step: RecordingStep | null): Promise<void> {
+  try {
+    if (step === null) {
+      await chrome.storage.local.remove(STORAGE_KEY_LAST_STEP);
+      return;
+    }
+    await chrome.storage.local.set({ [STORAGE_KEY_LAST_STEP]: step });
+  } catch (e) {
+    logger.warn('saveLastStep falhou', e);
+  }
+}
+
 async function broadcastState(session: RecordingSession): Promise<void> {
   try {
     await chrome.runtime.sendMessage({
@@ -128,6 +217,20 @@ async function broadcastInteractionRecorded(
   }
 }
 
+async function broadcastStepRecorded(
+  step: RecordingStep,
+  session: RecordingSession,
+): Promise<void> {
+  try {
+    await chrome.runtime.sendMessage({
+      type: '__STEP_RECORDED__',
+      payload: { step, session },
+    });
+  } catch {
+    /* popup pode nao estar aberto */
+  }
+}
+
 async function getActiveTabId(): Promise<number | null> {
   try {
     const [tab] = await chrome.tabs.query({
@@ -141,15 +244,126 @@ async function getActiveTabId(): Promise<number | null> {
 }
 
 async function onGetState(): Promise<RuntimeResponse> {
-  const s = await loadSession();
-  const last = await loadLastInteraction();
+  const [s, last] = await Promise.all([loadSession(), loadLastInteraction()]);
   return { ok: true, state: s, lastInteraction: last ?? undefined };
 }
 
 async function onGetLastInteraction(): Promise<RuntimeResponse> {
-  const s = await loadSession();
-  const last = await loadLastInteraction();
+  const [s, last] = await Promise.all([loadSession(), loadLastInteraction()]);
   return { ok: true, state: s, lastInteraction: last ?? undefined };
+}
+
+function onGetMyTabId(sender: chrome.runtime.MessageSender | undefined): RuntimeResponse {
+  const tabId = sender?.tab?.id ?? null;
+  if (tabId === null || tabId === undefined) {
+    return { ok: false, error: 'sender sem tab.id' } as RuntimeResponse;
+  }
+  return { ok: true, tabId } as RuntimeResponse;
+}
+
+async function onGetLastStep(): Promise<RuntimeResponse> {
+  const [s, lastStep, lastInter] = await Promise.all([
+    loadSession(),
+    loadLastStep(),
+    loadLastInteraction(),
+  ]);
+  return {
+    ok: true,
+    state: s,
+    lastInteraction: lastInter ?? undefined,
+    lastStep: lastStep ?? undefined,
+  };
+}
+
+async function onListSteps(): Promise<RuntimeResponse> {
+  const [s, steps] = await Promise.all([loadSession(), loadSteps()]);
+  return { ok: true, state: s, steps };
+}
+
+async function ensureContentInjected(tabId: number | null | undefined): Promise<boolean> {
+  if (typeof tabId !== 'number') return false;
+  try {
+    if (!chrome.scripting || typeof chrome.scripting.executeScript !== 'function') return false;
+    let tabUrl: string | undefined;
+    try {
+      const tab = await chrome.tabs.get(tabId);
+      tabUrl = tab.url;
+      if (!tabUrl) return false;
+      if (!/^https?:\/\//i.test(tabUrl) && !/^file:\/\//i.test(tabUrl)) {
+        logger.warn(
+          `ensureContentInjected: pulando tab#${tabId} (url nao suportada: ${tabUrl.slice(0, 120)})`,
+        );
+        return false;
+      }
+    } catch {
+      /* n/a */
+    }
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content/index.js'],
+    });
+    logger.info(
+      `ensureContentInjected: content script injetado na aba #${tabId} (${(tabUrl ?? '').slice(0, 120)})`,
+    );
+    return true;
+  } catch (e) {
+    logger.warn(
+      `ensureContentInjected falhou tab#${tabId} —`,
+      e instanceof Error ? e.message : String(e),
+    );
+    return false;
+  }
+}
+
+async function getOrCreateActiveProjectId(): Promise<string> {
+  try {
+    if (typeof chrome?.storage?.local?.get === 'function') {
+      const stored = await chrome.storage.local.get(STORAGE_KEY_ACTIVE_PROJECT_ID);
+      const existing = stored?.[STORAGE_KEY_ACTIVE_PROJECT_ID];
+      if (typeof existing === 'string' && existing.length > 0) {
+        const list = await listProjects({ includeArchived: true, limit: 1 });
+        if (list.some((p) => p.projectId === existing)) return existing;
+      }
+    }
+    const list = await listProjects({ includeArchived: false, limit: 1 });
+    if (list.length > 0) {
+      if (typeof chrome?.storage?.local?.set === 'function') {
+        await chrome.storage.local.set({ [STORAGE_KEY_ACTIVE_PROJECT_ID]: list[0].projectId });
+      }
+      return list[0].projectId;
+    }
+    const proj = await createProject({ name: 'Projeto padrão', description: 'Criado automaticamente pela extensão Homolog' });
+    if (typeof chrome?.storage?.local?.set === 'function') {
+      await chrome.storage.local.set({ [STORAGE_KEY_ACTIVE_PROJECT_ID]: proj.projectId });
+    }
+    return proj.projectId;
+  } catch (e) {
+    logger.warn('getOrCreateActiveProjectId falhou; usando sessionId temporario como fallback', e);
+    return 'default-project-fallback';
+  }
+}
+
+async function persistRecordingSessionOnIdb(
+  session: RecordingSession,
+  opts?: { projectId?: string; name?: string | null; description?: string | null },
+): Promise<HomologSession | null> {
+  try {
+    const projectId = opts?.projectId ?? (await getOrCreateActiveProjectId());
+    const sess = await upsertSessionFromRecordingSession(projectId, session, {
+      name: opts?.name,
+      description: opts?.description,
+    });
+    if (typeof chrome?.storage?.local?.set === 'function') {
+      await chrome.storage.local.set({
+        [STORAGE_KEY_ACTIVE_PROJECT_ID]: projectId,
+        [STORAGE_KEY_ACTIVE_SESSION_ID]: sess.sessionId,
+      });
+    }
+    return sess;
+  } catch (e) {
+    logger.warn('persistRecordingSessionOnIdb ignorou erro:', e instanceof Error ? e.message : String(e));
+    return null;
+  }
 }
 
 async function onStart(): Promise<RuntimeResponse> {
@@ -169,8 +383,28 @@ async function onStart(): Promise<RuntimeResponse> {
     session = r.session;
   }
   session.tabId = session.tabId ?? tabId;
+  let targetUrl = '';
+  try {
+    if (session.tabId !== null && session.tabId !== undefined) {
+      const t = await chrome.tabs.get(session.tabId);
+      targetUrl = t.url ?? '';
+    }
+  } catch {
+    /* n/a */
+  }
+  logger.info(
+    `onStart: sessao pronta tab#${session.tabId} url=${targetUrl.slice(0, 160)} state=${session.state}`,
+  );
+  await clearStepsForNewSession();
   await saveLastInteraction(null);
   await saveSession(session);
+  void persistRecordingSessionOnIdb(session, {
+    name: `Sessão ${new Date(session.startedAt ?? Date.now()).toLocaleString('pt-BR')}`,
+    description: targetUrl ? `Origem: ${targetUrl.slice(0, 200)}` : null,
+  });
+  if (session.tabId !== null && session.tabId !== undefined) {
+    await ensureContentInjected(session.tabId);
+  }
   await broadcastState(session);
   return { ok: true, state: session };
 }
@@ -182,6 +416,9 @@ async function onSimpleTransition(t: 'PAUSE' | 'RESUME' | 'FINALIZE' | 'INCREMEN
     return { ok: false, state: r.session, error: r.reason } as RuntimeResponse;
   }
   await saveSession(r.session);
+  if (t !== 'INCREMENT_STEP') {
+    void persistRecordingSessionOnIdb(r.session);
+  }
   await broadcastState(r.session);
   return { ok: true, state: r.session } as RuntimeResponse;
 }
@@ -190,14 +427,41 @@ async function onReset(): Promise<RuntimeResponse> {
   const current = await loadSession();
   const tabId = await getActiveTabId();
   const r = resetSession(current, tabId);
+  await clearStepsForNewSession();
   await saveLastInteraction(null);
   await saveSession(r.session);
+  void persistRecordingSessionOnIdb(r.session, {
+    name: `Sessão ${new Date(r.session.startedAt ?? Date.now()).toLocaleString('pt-BR')}`,
+    description: 'Sessão limpa (reset)',
+  });
   await broadcastState(r.session);
   return { ok: true, state: r.session };
 }
 
 async function onInstalled(): Promise<void> {
   logger.info('instalado/atualizado');
+  try {
+    const done = await getSetting<number>('migration.v1.completedAt').catch(() => null);
+    if (!done) {
+      const m = await migrateFromLegacyChromeStorage({ removeLegacyAfter: false });
+      logger.info(
+        `migracao legado concluida ok=${m.ok} steps=${m.migratedSteps} shots=${m.migratedScreenshots} erros=${m.errors.length}`,
+      );
+    } else {
+      logger.info(`migracao legado ja concluida em ${new Date(done).toISOString()}`);
+    }
+    try {
+      if (typeof chrome?.storage?.local?.set === 'function') {
+        await chrome.storage.local.set({
+          [STORAGE_KEY_IDB_MIGRATION_DONE]: Date.now(),
+        });
+      }
+    } catch {
+      /* n/a */
+    }
+  } catch (e) {
+    logger.warn('migracao idb falhou; prosseguindo sem ela', e);
+  }
   const s = await loadSession();
   if (!s.sessionId) {
     const fresh = createNewSession();
@@ -205,6 +469,218 @@ async function onInstalled(): Promise<void> {
   } else {
     setActionBadge(s);
   }
+  try {
+    subscribeSaveIndicator((snap) => {
+      logger.info(
+        `save indicator status=${snap.status} pending=${snap.pendingCount} lastSavedAt=${
+          snap.lastSavedAt ? new Date(snap.lastSavedAt).toISOString() : 'null'
+        }${snap.lastError ? ` erro=${snap.lastError.slice(0, 160)}` : ''}`,
+      );
+    });
+  } catch {
+    /* n/a */
+  }
+  void getSaveIndicatorSnapshot;
+}
+
+async function captureTabDataUrl(
+  tabIdArg: number | null | undefined,
+): Promise<{ dataUrl: string; tabId: number | null }> {
+  const tabId = typeof tabIdArg === 'number' ? tabIdArg : null;
+  const captureOptions: { format?: 'jpeg' | 'png'; quality?: number } = {
+    format: 'jpeg',
+    quality: Math.max(0.1, Math.min(1, SCREENSHOT.QUALITY)),
+  };
+  try {
+    if (tabId !== null && typeof chrome.tabs.captureVisibleTab === 'function') {
+      const dataUrl = await chrome.tabs.captureVisibleTab(
+        (chrome.windows as unknown as { WINDOW_ID_CURRENT?: number }).WINDOW_ID_CURRENT ??
+          undefined,
+        captureOptions,
+      );
+      return { dataUrl: typeof dataUrl === 'string' ? dataUrl : '', tabId };
+    }
+  } catch (e) {
+    logger.warn('captureVisibleTab falhou; tentando sem windowId', e);
+  }
+  try {
+    const dataUrl = await (
+      chrome.tabs.captureVisibleTab as (opts?: {
+        format?: 'jpeg' | 'png';
+        quality?: number;
+      }) => Promise<string> | string
+    )(captureOptions);
+    return { dataUrl: typeof dataUrl === 'string' ? dataUrl : '', tabId };
+  } catch (e) {
+    throw new Error(
+      e instanceof Error ? `captura falhou: ${e.message}` : 'captura falhou (erro desconhecido)',
+    );
+  }
+}
+
+async function ensureSameTabAsSession(
+  sender: chrome.runtime.MessageSender | undefined,
+  session: RecordingSession,
+): Promise<{ ok: boolean; error?: string; senderTabId: number | null }> {
+  const senderTabId = sender?.tab?.id ?? null;
+  if (session.tabId === null || senderTabId === null) {
+    return { ok: true, senderTabId };
+  }
+  if (senderTabId !== session.tabId) {
+    return {
+      ok: false,
+      error: `aba enviou interacao diferente da aba gravada (sender=${senderTabId} vs sessao=${session.tabId})`,
+      senderTabId,
+    };
+  }
+  try {
+    const tab = await chrome.tabs.get(session.tabId);
+    if (!tab) {
+      return {
+        ok: false,
+        error: 'aba original da sessao nao existe mais',
+        senderTabId,
+      };
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      error: `verificacao de aba falhou: ${e instanceof Error ? e.message : String(e)}`,
+      senderTabId,
+    };
+  }
+  return { ok: true, senderTabId };
+}
+
+function isDuplicateInteractionStep(
+  steps: Array<RecordingStep>,
+  interactionId: string,
+  windowMs = 1500,
+  timestampNow = Date.now(),
+): boolean {
+  for (let i = steps.length - 1; i >= 0; i -= 1) {
+    const s = steps[i];
+    if (timestampNow - s.timestamp > windowMs) break;
+    if (s.interactionId === interactionId) return true;
+  }
+  return false;
+}
+
+async function onRequestScreenshot(
+  payload: Record<string, unknown> | undefined,
+  sender: chrome.runtime.MessageSender | undefined,
+): Promise<RuntimeResponse> {
+  const session = await loadSession();
+  if (session.state !== 'recording') {
+    return { ok: false, state: session, error: 'sessao nao esta gravando' };
+  }
+  const interactionRaw = payload?.interaction;
+  const valid = validateInteractionEvent(interactionRaw);
+  if (!valid.ok) {
+    return { ok: false, error: `interacao invalida: ${valid.error}` };
+  }
+  const ev = valid.value;
+
+  const tabCheck = await ensureSameTabAsSession(sender, session);
+  if (!tabCheck.ok) {
+    return { ok: false, error: tabCheck.error ?? 'troca de aba detectada' };
+  }
+
+  if (ev.sessionId && ev.sessionId !== session.sessionId) {
+    logger.warn(
+      'interacao de outra sessao recebida (esperado=%s recebido=%s)',
+      session.sessionId.slice(0, 8),
+      ev.sessionId.slice(0, 8),
+    );
+  }
+
+  const priorSteps = await loadSteps(session.sessionId);
+  if (isDuplicateInteractionStep(priorSteps, ev.interactionId, 1500, Date.now())) {
+    return { ok: false, error: 'step duplicado para mesma interacao; ignorado' };
+  }
+
+  let captured: { dataUrl: string; tabId: number | null };
+  try {
+    captured = await captureTabDataUrl(session.tabId ?? tabCheck.senderTabId);
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : 'screenshot indisponivel nesta pagina',
+    };
+  }
+  if (!captured.dataUrl || captured.dataUrl.length < 32) {
+    return { ok: false, error: 'screenshot vazia; navegador bloqueou a captura' };
+  }
+
+  const compressed = await compressScreenshotDataUrl(captured.dataUrl, {
+    maxWidthPx: SCREENSHOT.MAX_WIDTH_PX,
+    format: SCREENSHOT.FORMAT,
+    quality: SCREENSHOT.QUALITY,
+  });
+  if (!compressed) {
+    return { ok: false, error: 'screenshot corrompida apos compressao' };
+  }
+
+  const nextSequence = priorSteps.length + 1;
+  const step = buildRecordingStep({
+    interaction: ev,
+    screenshotDataUrl: captured.dataUrl,
+    sequence: nextSequence,
+    tabId: session.tabId ?? tabCheck.senderTabId,
+    sessionId: session.sessionId,
+    compressed,
+  });
+  if (!step) {
+    return { ok: false, error: 'falha ao montar step apos screenshot' };
+  }
+  const stepValid = validateRecordingStep(step);
+  if (!stepValid.ok) {
+    return { ok: false, error: `step invalido: ${stepValid.error}` };
+  }
+
+  const stepR = applyTransition(session, 'INCREMENT_STEP');
+  let finalSession: RecordingSession;
+  if (!stepR.changed) {
+    logger.warn('INCREMENT_STEP nao aplicavel ao salvar screenshot', stepR.reason);
+    finalSession = session;
+  } else {
+    await saveSession(stepR.session);
+    finalSession = stepR.session;
+  }
+
+  const nextSteps = [...priorSteps, stepValid.value];
+  await saveSteps(nextSteps);
+  await saveLastStep(stepValid.value);
+  await saveLastInteraction(ev);
+
+  try {
+    const projectId = await getOrCreateActiveProjectId();
+    const persisted = await addStepWithScreenshot(
+      projectId,
+      finalSession.sessionId,
+      stepValid.value as RecordingStep,
+      null,
+    );
+    void persisted;
+    const sessOnIdb = await getSessionById(finalSession.sessionId);
+    if (!sessOnIdb || sessOnIdb.stepCount !== stepValid.value.sequence) {
+      const updated = {
+        ...finalSession,
+        stepCount: stepValid.value.sequence,
+      };
+      await upsertSessionFromRecordingSession(projectId, updated);
+    }
+  } catch (e) {
+    logger.warn(
+      `idb persist step falhou (mantendo legado) sequence=${stepValid.value.sequence} erro:`,
+      e instanceof Error ? e.message : String(e),
+    );
+  }
+
+  await broadcastState(finalSession);
+  await broadcastStepRecorded(stepValid.value, finalSession);
+
+  return { ok: true, state: finalSession, lastStep: stepValid.value, lastInteraction: ev };
 }
 
 async function onRecordInteraction(
@@ -261,6 +737,27 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onInstalle
       setActionBadge(s);
     })();
   });
+  try {
+    chrome.tabs.onUpdated.addListener((tabId, info) => {
+      if (info.status !== 'complete') return;
+      void (async () => {
+        const session = await loadSession();
+        if (session.state !== 'recording') return;
+        if (session.tabId !== tabId) return;
+        await ensureContentInjected(tabId);
+      })();
+    });
+    chrome.tabs.onActivated.addListener((info) => {
+      void (async () => {
+        const session = await loadSession();
+        if (session.state !== 'recording') return;
+        if (session.tabId !== info.tabId) return;
+        await ensureContentInjected(info.tabId);
+      })();
+    });
+  } catch (e) {
+    logger.warn('tabs listeners nao disponiveis', e);
+  }
 
   chrome.runtime.onMessage.addListener((rawMessage, sender, sendResponse) => {
     const msgCheck = validateRuntimeMessage(rawMessage);
@@ -276,6 +773,12 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onInstalle
           return onGetState();
         case '__GET_LAST_INTERACTION__':
           return onGetLastInteraction();
+        case '__GET_LAST_STEP__':
+          return onGetLastStep();
+        case '__LIST_STEPS__':
+          return onListSteps();
+        case '__GET_MY_TAB_ID__':
+          return onGetMyTabId(sender);
         case 'START':
           return onStart();
         case 'PAUSE':
@@ -290,6 +793,8 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onInstalle
           return onReset();
         case '__RECORD_INTERACTION__':
           return onRecordInteraction(message.payload, sender);
+        case '__REQUEST_SCREENSHOT__':
+          return onRequestScreenshot(message.payload, sender);
         default:
           return {
             ok: false,

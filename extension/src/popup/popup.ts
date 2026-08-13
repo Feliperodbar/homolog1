@@ -3,6 +3,7 @@ import { isRestrictedUrl } from '../shared/restrictedUrls';
 import {
   InteractionEvent,
   RecordingSession,
+  RecordingStep,
   RuntimeMessage,
   RuntimeResponse,
 } from '../shared/types';
@@ -29,6 +30,9 @@ const els = {
   interactionSelector: document.getElementById('interactionSelector') as HTMLElement | null,
   interactionCoords: document.getElementById('interactionCoords') as HTMLElement | null,
   interactionSource: document.getElementById('interactionSource') as HTMLElement | null,
+  stepsCard: document.getElementById('stepsCard') as HTMLElement | null,
+  stepsHeaderCount: document.getElementById('stepsHeaderCount') as HTMLElement | null,
+  stepsList: document.getElementById('stepsList') as HTMLOListElement | null,
 };
 
 function formatDateTime(ts: number | null | undefined): string {
@@ -117,6 +121,59 @@ function updateInteractionView(interaction: InteractionEvent | null | undefined)
   }
 }
 
+function updateStepsView(steps: Array<RecordingStep> | null | undefined): void {
+  if (!els.stepsCard || !els.stepsList) return;
+  const arr = Array.isArray(steps)
+    ? steps
+        .slice()
+        .sort((a, b) => b.sequence - a.sequence)
+        .slice(0, 5)
+    : [];
+  if (arr.length === 0) {
+    els.stepsCard.classList.add('hidden');
+    els.stepsList.innerHTML = '';
+    if (els.stepsHeaderCount) els.stepsHeaderCount.textContent = '0';
+    return;
+  }
+  els.stepsCard.classList.remove('hidden');
+  if (els.stepsHeaderCount) els.stepsHeaderCount.textContent = String(arr.length);
+  const frag = document.createDocumentFragment();
+  for (const step of arr) {
+    const li = document.createElement('li');
+    li.className = 'step-item';
+    const seq = document.createElement('div');
+    seq.className = 'step-seq';
+    seq.textContent = `#${step.sequence}`;
+    const thumb = document.createElement('div');
+    thumb.className = 'step-thumb';
+    if (step.screenshotDataUrl && step.screenshotDataUrl.length > 64) {
+      thumb.style.backgroundImage = `url("${step.screenshotDataUrl}")`;
+    } else {
+      thumb.classList.add('empty');
+      thumb.textContent = 'sem img';
+    }
+    const info = document.createElement('div');
+    info.className = 'step-info';
+    const desc = document.createElement('div');
+    desc.className = 'step-desc';
+    desc.textContent = step.description || '—';
+    desc.title = step.description || '';
+    const meta = document.createElement('div');
+    meta.className = 'step-meta';
+    const url = (typeof step.url === 'string' ? step.url : '').slice(0, 120);
+    const ts = formatDateTime(step.timestamp);
+    meta.textContent = url ? `${ts} · ${url}` : ts;
+    info.appendChild(desc);
+    info.appendChild(meta);
+    li.appendChild(seq);
+    li.appendChild(thumb);
+    li.appendChild(info);
+    frag.appendChild(li);
+  }
+  els.stepsList.innerHTML = '';
+  els.stepsList.appendChild(frag);
+}
+
 function updateView(
   session: RecordingSession,
   restricted: boolean,
@@ -190,16 +247,19 @@ async function getCurrentTabInfo(): Promise<{
 }
 
 async function refresh(): Promise<void> {
-  const [tabInfo, stateResp] = await Promise.all([
+  const [tabInfo, stateResp, stepsResp] = await Promise.all([
     getCurrentTabInfo(),
     sendMessage({ type: 'GET_STATE' }),
+    sendMessage({ type: '__LIST_STEPS__' }),
   ]);
   if (!stateResp.ok || !stateResp.state) {
     setError(`Erro ao ler estado: ${stateResp.error ?? 'desconhecido'}`);
     return;
   }
+  const steps = stepsResp.ok ? stepsResp.steps : undefined;
   setError(null);
   updateView(stateResp.state, tabInfo.restricted, stateResp.lastInteraction);
+  updateStepsView(steps ?? null);
 }
 
 async function action(type: RuntimeMessage['type']): Promise<void> {
@@ -248,6 +308,8 @@ function bindButtons(): void {
         if (els.stepCount && msg?.payload?.session?.stepCount !== undefined) {
           els.stepCount.textContent = String(msg.payload.session.stepCount);
         }
+      } else if (msg?.type === '__STEP_RECORDED__') {
+        void refresh();
       }
     });
   } catch {

@@ -2,11 +2,13 @@ import type {
   InteractionEvent,
   Point2D,
   RecordingSession,
+  RecordingStep,
   RectInfo,
   RuntimeMessage,
   RuntimeMessageType,
   TargetElementInfo,
 } from './types';
+import { SCREENSHOT } from './constants';
 
 const STRING_TYPES: ReadonlySet<RuntimeMessageType> = new Set([
   'GET_STATE',
@@ -18,7 +20,12 @@ const STRING_TYPES: ReadonlySet<RuntimeMessageType> = new Set([
   'RESET',
   '__STATE_CHANGED__',
   '__GET_LAST_INTERACTION__',
+  '__GET_LAST_STEP__',
+  '__LIST_STEPS__',
+  '__GET_MY_TAB_ID__',
   '__RECORD_INTERACTION__',
+  '__REQUEST_SCREENSHOT__',
+  '__STEP_RECORDED__',
 ]);
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -137,6 +144,63 @@ export function validateInteractionEvent(
   return { ok: true, value: ev as InteractionEvent };
 }
 
+function isDataUrlImageLoose(x: unknown, maxLen = SCREENSHOT.MAX_DATA_URL_LENGTH): x is string {
+  if (typeof x !== 'string') return false;
+  if (x.length > maxLen) return false;
+  return x.startsWith('data:image/jpeg;base64,') || x.startsWith('data:image/png;base64,');
+}
+
+export function validateRecordingStep(
+  s: unknown,
+): { ok: true; value: RecordingStep } | { ok: false; error: string } {
+  if (!isRecord(s)) return { ok: false, error: 'step nao e objeto' };
+  if (!isNonEmptyString(s.stepId, 128)) return { ok: false, error: 'stepId invalido' };
+  if (!isNonEmptyString(s.sessionId, 200)) return { ok: false, error: 'sessionId invalido' };
+  if (!isFiniteNumber(s.sequence, 1, 1_000_000)) return { ok: false, error: 'sequence invalida' };
+  if (!['click', 'tap', 'press', 'unknown'].includes(String(s.actionType))) {
+    return { ok: false, error: 'actionType invalido' };
+  }
+  if (!isNonEmptyString(s.interactionId, 128))
+    return { ok: false, error: 'interactionId invalido' };
+  if (!isTarget(s.target)) return { ok: false, error: 'step target invalido' };
+  if (!isPoint(s.viewportPoint)) return { ok: false, error: 'step viewportPoint invalido' };
+  if (!isRect(s.elementRect)) return { ok: false, error: 'step elementRect invalido' };
+  if (!isNonEmptyString(s.url, 4096)) return { ok: false, error: 'step url invalida' };
+  if (typeof s.pageTitle !== 'string' || s.pageTitle.length > 2000)
+    return { ok: false, error: 'step pageTitle invalido' };
+  if (
+    !isRecord(s.viewportSize) ||
+    !isFiniteNumber((s.viewportSize as Record<string, unknown>).width, 0, 100000) ||
+    !isFiniteNumber((s.viewportSize as Record<string, unknown>).height, 0, 100000)
+  ) {
+    return { ok: false, error: 'step viewportSize invalido' };
+  }
+  if (!isFiniteNumber(s.devicePixelRatio, 0.1, 10))
+    return { ok: false, error: 'step devicePixelRatio invalido' };
+  if (typeof s.stableSelector !== 'string' || s.stableSelector.length > 1024)
+    return { ok: false, error: 'step stableSelector invalido' };
+  if (!['mouse', 'touch', 'pen', 'unknown'].includes(String(s.inputSource))) {
+    return { ok: false, error: 'step inputSource invalido' };
+  }
+  if (!isDataUrlImageLoose(s.screenshotDataUrl))
+    return { ok: false, error: 'step screenshotDataUrl invalido' };
+  if (s.screenshotFormat !== 'image/png' && s.screenshotFormat !== 'image/jpeg')
+    return { ok: false, error: 'step screenshotFormat invalido' };
+  if (!isFiniteNumber(s.screenshotWidthPx, 0, 100000))
+    return { ok: false, error: 'step screenshotWidthPx invalido' };
+  if (!isFiniteNumber(s.screenshotHeightPx, 0, 100000))
+    return { ok: false, error: 'step screenshotHeightPx invalido' };
+  if (!isFiniteNumber(s.screenshotSizeBytes, 0, 256 * 1024 * 1024))
+    return { ok: false, error: 'step screenshotSizeBytes invalido' };
+  if (!isNonEmptyString(s.description, 1024))
+    return { ok: false, error: 'step description invalida' };
+  if (!isFiniteNumber(s.timestamp)) return { ok: false, error: 'step timestamp invalido' };
+  if (!(s.tabId === null || typeof s.tabId === 'number'))
+    return { ok: false, error: 'step tabId invalido' };
+  if (typeof s.isTrusted !== 'boolean') return { ok: false, error: 'step isTrusted invalido' };
+  return { ok: true, value: s as RecordingStep };
+}
+
 export const _priv = {
   isRecord,
   isNonEmptyString,
@@ -146,4 +210,5 @@ export const _priv = {
   isPoint,
   isRect,
   isTarget,
+  isDataUrlImageLoose,
 };
