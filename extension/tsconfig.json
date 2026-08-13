@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["chrome", "node"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable", "WebWorker"],
+    "baseUrl": ".",
+    "paths": {
+      "@homolog/shared": ["../shared/src/index.ts"],
+      "@homolog/shared/*": ["../shared/src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts"],
+  "exclude": ["node_modules", "dist"]
+}

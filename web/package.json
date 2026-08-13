@@ -1,0 +1,22 @@
+{
+  "name": "@homolog/web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "author": "Felipe Rodrigues",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview --port 4173"
+  },
+  "dependencies": {
+    "docx": "^8.5.0",
+    "@homolog/shared": "*"
+  },
+  "devDependencies": {
+    "@types/dom-view-transitions": "^1.0.4",
+    "vite": "^5.4.0",
+    "vite-tsconfig-paths": "^4.3.2"
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist-types",
+    "rootDir": "./src",
+    "types": ["vite/client", "node"],
+    "allowJs": false,
+    "noEmit": true,
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "strictFunctionTypes": false,
+    "noImplicitReturns": false,
+    "noImplicitOverride": false,
+    "allowUnreachableCode": true,
+    "allowUnusedLabels": true,
+    "skipLibCheck": true,
+    "useUnknownInCatchVariables": false,
+    "exactOptionalPropertyTypes": false,
+    "noPropertyAccessFromIndexSignature": false,
+    "allowImportingTsExtensions": false,
+    "verbatimModuleSyntax": false,
+    "baseUrl": ".",
+    "paths": {
+      "@homolog/shared": ["../shared/src/index.ts"],
+      "@homolog/shared/*": ["../shared/src/*"],
+      "@/*": ["src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.d.ts"],
+  "exclude": ["node_modules", "dist", "dist-types"]
+}

@@ -8,8 +8,14 @@ pnpm-debug.log*
 
 # Build output
 dist/
+dist-types/
 build/
 *.tsbuildinfo
+web/dist/
+web/dist-types/
+shared/dist/
+shared/dist-types/
+extension/dist/
 
 # IDE
 .vscode/
@@ -30,8 +36,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.egg-info/
-dist/
-build/
 venv/
 env/
 .venv
@@ -48,6 +52,8 @@ Thumbs.db
 .cache/
 .pytest_cache/
 .turbo/
+.eslintcache
+.stylelintcache
 
 # Testing
 coverage/
@@ -57,3 +63,9 @@ coverage/
 *.tmp
 *.temp
 .tmp/
+
+# Screenshots locais dos scripts Python
+prints/
+screenshots/
+*.png.bak
+

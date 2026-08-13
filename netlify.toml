@@ -1,5 +1,8 @@
-# Netlify configuration
 [build]
-  publish = "."
-  # Projeto 100% estático; sem comando de build
+  command = "npm run build:web"
+  publish = "web/dist"
 
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

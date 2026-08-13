@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Homolog Recorder</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+
+  <body>
+    <div id="app" class="popup">
+      <header class="popup-header">
+        <div class="brand">
+          <span class="brand-icon" aria-hidden="true">🎬</span>
+          <div>
+            <h1>Homolog Recorder</h1>
+            <p class="brand-sub">Controle de sessão de gravação</p>
+          </div>
+        </div>
+        <button id="openPanelBtn" type="button" class="link-btn" aria-label="Abrir painel web Homolog" title="Abrir painel web Homolog">
+          Painel ↗
+        </button>
+      </header>
+
+      <div id="restrictedBanner" class="restricted hidden" role="alert">
+        <strong>⚠️ Não disponível aqui</strong>
+        <p id="restrictedReason">
+          Esta é uma página interna do navegador ou da loja de extensões. Por motivos de segurança, a gravação não funciona nesta página.
+        </p>
+      </div>
+
+      <section class="status-card">
+        <div class="row">
+          <div>
+            <div class="label">Estado</div>
+            <div class="value">
+              <span id="statusPill" class="pill pill-idle">Pronto</span>
+            </div>
+          </div>
+          <div class="align-right">
+            <div class="label">Passos</div>
+            <div class="value">
+              <span id="stepCountBadge" class="step-badge">0</span>
+            </div>
+          </div>
+        </div>
+        <div class="row subtle">
+          <div class="label">Sessão ID</div>
+          <div class="value mono" id="sessionId">—</div>
+        </div>
+        <div class="row subtle">
+          <div class="label">Iniciada em</div>
+          <div class="value" id="startedAt">—</div>
+        </div>
+        <div class="row subtle">
+          <div class="label">Aba gravada</div>
+          <div class="value" id="tabInfo">Nenhuma</div>
+        </div>
+      </section>
+
+      <section class="controls">
+        <button id="startBtn" type="button" class="btn btn-primary">Iniciar gravação</button>
+        <div class="row two-col">
+          <button id="pauseBtn" type="button" class="btn btn-secondary" disabled>Pausar</button>
+          <button id="resumeBtn" type="button" class="btn btn-secondary" disabled>Continuar</button>
+        </div>
+        <button id="finalizeBtn" type="button" class="btn btn-tertiary" disabled>Finalizar sessão</button>
+      </section>
+
+      <section id="interactionCard" class="interaction-card hidden">
+        <div class="interaction-header">
+          <div>
+            <div class="label">Última interação</div>
+            <div id="interactionTime" class="value interaction-time">—</div>
+          </div>
+          <span id="interactionTag" class="tag-chip">—</span>
+        </div>
+        <div class="interaction-field">
+          <div class="label">Texto visível</div>
+          <div id="interactionText" class="mono wrap">—</div>
+        </div>
+        <div class="interaction-field">
+          <div class="label">Seletor CSS</div>
+          <div id="interactionSelector" class="mono wrap selector">—</div>
+        </div>
+        <div class="interaction-field two-col">
+          <div>
+            <div class="label">Coordenadas</div>
+            <div id="interactionCoords" class="mono">—</div>
+          </div>
+          <div>
+            <div class="label">Origem</div>
+            <div id="interactionSource" class="mono">—</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="meta">
+        <button id="resetBtn" type="button" class="link-btn subtle-btn" title="Limpar sessão atual (apenas quando finalizada)" disabled>
+          Iniciar nova sessão
+        </button>
+        <div class="hint">
+          💡 Nesta versão, a extensão gerencia o estado da sessão. A captura automática de screenshots a cada clique chegará na próxima
+          etapa.
+        </div>
+      </section>
+
+      <div id="errorBox" class="error hidden" role="alert"></div>
+    </div>
+    <script type="module" src="./popup.js"></script>
+  </body>
+</html>
