@@ -13,7 +13,6 @@ const els = {
   pause: document.getElementById('pauseBtn') as HTMLButtonElement | null,
   resume: document.getElementById('resumeBtn') as HTMLButtonElement | null,
   finalize: document.getElementById('finalizeBtn') as HTMLButtonElement | null,
-  reset: document.getElementById('resetBtn') as HTMLButtonElement | null,
   openPanel: document.getElementById('openPanelBtn') as HTMLButtonElement | null,
   statusPill: document.getElementById('statusPill') as HTMLElement | null,
   stepCount: document.getElementById('stepCountBadge') as HTMLElement | null,
@@ -211,9 +210,6 @@ function updateView(
   if (els.finalize) {
     els.finalize.disabled = session.state !== 'recording' && session.state !== 'paused';
   }
-  if (els.reset) {
-    els.reset.disabled = session.state !== 'finalized' && session.state !== 'idle';
-  }
 
   if (els.restrictedBanner) {
     if (restricted) els.restrictedBanner.classList.remove('hidden');
@@ -273,7 +269,9 @@ async function action(type: RuntimeMessage['type']): Promise<void> {
 
 async function openPanel(): Promise<void> {
   try {
-    await chrome.tabs.create({ url: HOMOLOG_PANEL_DEFAULT_URL });
+    const url = new URL(HOMOLOG_PANEL_DEFAULT_URL);
+    url.searchParams.set('homologExtensionId', chrome.runtime.id);
+    await chrome.tabs.create({ url: url.toString() });
   } catch (e) {
     setError(`Não foi possível abrir o painel: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -284,11 +282,6 @@ function bindButtons(): void {
   els.pause?.addEventListener('click', () => void action('PAUSE'));
   els.resume?.addEventListener('click', () => void action('RESUME'));
   els.finalize?.addEventListener('click', () => void action('FINALIZE'));
-  els.reset?.addEventListener('click', async () => {
-    if (confirm('Iniciar uma nova sessão? Os dados da atual serão descartados.')) {
-      await action('RESET');
-    }
-  });
   els.openPanel?.addEventListener('click', () => void openPanel());
 
   chrome.storage.onChanged.addListener((_changes, areaName) => {

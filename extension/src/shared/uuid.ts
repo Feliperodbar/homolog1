@@ -8,10 +8,11 @@ export function uuidv4(): string {
   }
 
   // Fallback UUID v4 compatível com browsers antigos
-  const bytes =
+  const bytes: number[] = Array.from(
     typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function'
       ? crypto.getRandomValues(new Uint8Array(16))
-      : Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+      : Array.from({ length: 16 }, () => Math.floor(Math.random() * 256)),
+  );
   // Definir versão e variante
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;

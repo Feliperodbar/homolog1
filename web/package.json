@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "docx": "^8.5.0",
+    "jspdf": "^2.5.2",
     "@homolog/shared": "*"
   },
   "devDependencies": {

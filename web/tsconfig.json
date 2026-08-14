@@ -27,6 +27,11 @@
       "@/*": ["src/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts"],
+  "include": [
+    "src/main.ts",
+    "src/core/modules/evidenceStore.ts",
+    "src/core/modules/professionalReport.ts",
+    "src/types/**/*.d.ts"
+  ],
   "exclude": ["node_modules", "dist", "dist-types"]
 }

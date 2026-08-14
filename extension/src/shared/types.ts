@@ -112,7 +112,9 @@ export type RuntimeMessageType =
   | '__STEP_RECORDED__'
   | '__GET_LAST_INTERACTION__'
   | '__GET_LAST_STEP__'
-  | '__LIST_STEPS__';
+  | '__LIST_STEPS__'
+  | '__GET_MY_TAB_ID__'
+  | '__INTERACTION_RECORDED__';
 
 export interface RuntimeMessage {
   type: RuntimeMessageType;

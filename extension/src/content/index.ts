@@ -1,6 +1,6 @@
 import { isRestrictedUrl, RestrictionInfo } from '../shared/restrictedUrls';
 import {
-  _DEDUPLICATION,
+  CHROME_MESSAGE_TIMEOUT_MS,
   RESTRICTED_PAGE_REASONS,
   SCREENSHOT,
   STORAGE_KEY_RECORDING,
@@ -14,6 +14,7 @@ import { uuidv4 } from '../shared/uuid';
 import type {
   InteractionEvent,
   RecordingSession,
+  RecordingStep,
   RuntimeMessage,
   RuntimeResponse,
   RuntimeMessageType,
@@ -21,8 +22,10 @@ import type {
 
 const BANNER_ID = '__homolog_restricted_banner__';
 const MARKER_ID = SCREENSHOT.POINTER_MARKER_ID;
-const OWN_ELEMENT_MARKERS: ReadonlyArray<string> = [BANNER_ID, MARKER_ID];
-const FINALIZATION_DELAY_MS = 150;
+const CONTROLS_ID = '__homolog_recording_controls__';
+const CONTENT_INSTANCE_ATTRIBUTE = 'data-homolog-recorder-active';
+const OWN_ELEMENT_MARKERS: ReadonlyArray<string> = [BANNER_ID, MARKER_ID, CONTROLS_ID];
+const FINALIZATION_DELAY_MS = 0;
 const MIN_INTERVAL_BETWEEN_CAPTURES_MS = SCREENSHOT.MIN_INTERVAL_BETWEEN_CAPTURES_MS;
 const REQUEST_TIMEOUT_MS = SCREENSHOT.TIMEOUT_MS;
 
@@ -46,6 +49,9 @@ const state: {
   listenerAttached: boolean;
   lastCaptureStartedAt: number;
   markerTimeoutIds: Array<number>;
+  session: RecordingSession | null;
+  controlSteps: Array<RecordingStep>;
+  controlsExpanded: boolean;
 } = {
   recording: false,
   sessionId: null,
@@ -55,7 +61,132 @@ const state: {
   listenerAttached: false,
   lastCaptureStartedAt: 0,
   markerTimeoutIds: [],
+  session: null,
+  controlSteps: [],
+  controlsExpanded: false,
 };
+
+function setControlsCaptureHidden(hidden: boolean): void {
+  const host = document.getElementById(CONTROLS_ID);
+  if (host) host.style.visibility = hidden ? 'hidden' : 'visible';
+}
+
+async function controlAction(type: 'START' | 'PAUSE' | 'RESUME' | 'FINALIZE'): Promise<void> {
+  const response = await sendMessage({ type });
+  if (!response.ok) logger.warn('controle flutuante rejeitado', response.error);
+  if (response.state) applySessionState(response.state);
+}
+
+async function toggleRecordingControls(): Promise<void> {
+  if (state.controlsExpanded) {
+    state.controlsExpanded = false;
+    renderRecordingControls(state.session);
+    return;
+  }
+  state.controlsExpanded = true;
+  if (state.session?.state === 'recording') {
+    // Abrir o editor durante uma gravação pausa a captura para que os cliques
+    // no menu e nas prévias nunca sejam confundidos com passos da evidência.
+    await controlAction('PAUSE');
+    return;
+  }
+  renderRecordingControls(state.session);
+}
+
+function renderStepPreviews(): void {
+  const root = document.getElementById(CONTROLS_ID)?.shadowRoot;
+  const list = root?.querySelector<HTMLOListElement>('.step-list');
+  const empty = root?.querySelector<HTMLElement>('.step-empty');
+  if (!list || !empty) return;
+  list.replaceChildren();
+  const recent = state.controlSteps.slice(-12).reverse();
+  empty.hidden = recent.length > 0;
+  for (const step of recent) {
+    const item = document.createElement('li');
+    item.className = 'step-item';
+    item.tabIndex = 0;
+    item.setAttribute('role', 'button');
+    item.setAttribute('aria-label', `Visualizar passo ${step.sequence} em tela cheia`);
+    const thumb = document.createElement('div');
+    thumb.className = 'thumb';
+    if (step.screenshotDataUrl) {
+      const image = document.createElement('img');
+      image.src = step.screenshotDataUrl;
+      image.alt = '';
+      thumb.appendChild(image);
+    }
+    const detail = document.createElement('div');
+    detail.className = 'step-detail';
+    const title = document.createElement('strong');
+    title.textContent = `Passo ${step.sequence}`;
+    const description = document.createElement('span');
+    description.textContent = step.description || 'Clique registrado';
+    detail.append(title, description);
+    item.append(thumb, detail);
+    const openViewer = () => {
+      if (!step.screenshotDataUrl) return;
+      const viewer = root?.querySelector<HTMLElement>('.viewer');
+      const viewerImage = root?.querySelector<HTMLImageElement>('.viewer img');
+      const viewerTitle = root?.querySelector<HTMLElement>('.viewer-title');
+      if (viewer && viewerImage && viewerTitle) {
+        viewerImage.src = step.screenshotDataUrl;
+        viewerImage.alt = `Screenshot do passo ${step.sequence}`;
+        viewerTitle.textContent = `Passo ${step.sequence} — ${step.description || 'Clique registrado'}`;
+        viewer.hidden = false;
+        root?.querySelector<HTMLButtonElement>('.viewer-close')?.focus();
+      }
+    };
+    item.addEventListener('click', openViewer);
+    item.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openViewer();
+      }
+    });
+    list.appendChild(item);
+  }
+}
+
+async function refreshControlSteps(): Promise<void> {
+  const response = await sendMessage({ type: '__LIST_STEPS__' });
+  if (!response.ok || !response.steps) return;
+  state.controlSteps = response.steps;
+  renderRecordingControls(state.session);
+}
+
+function renderRecordingControls(session: RecordingSession | null): void {
+  if (typeof document === 'undefined' || state.restricted) return;
+  let host = document.getElementById(CONTROLS_ID) as HTMLDivElement | null;
+  if (!host) {
+    host = document.createElement('div');
+    host.id = CONTROLS_ID;
+    host.style.cssText = 'all:initial;position:fixed;inset:0 0 0 auto;z-index:2147483646;pointer-events:none';
+    const shadow = host.attachShadow({ mode: 'open' });
+    shadow.innerHTML = `<style>
+      :host{all:initial}.drawer{position:absolute;top:0;right:0;width:330px;height:100vh;padding:18px 14px 14px;box-sizing:border-box;border-left:1px solid #29476f;background:#0b1729f7;color:#eaf2ff;box-shadow:-16px 0 40px #0006;font:13px/1.35 system-ui,-apple-system,Segoe UI,sans-serif;pointer-events:auto;transform:translateX(0);transition:transform .22s ease;display:flex;flex-direction:column}.drawer.closed{transform:translateX(100%)}.toggle{position:absolute;top:50%;left:-38px;width:38px;height:64px;transform:translateY(-50%);border:1px solid #29476f;border-right:0;border-radius:12px 0 0 12px;background:#0b1729f7;color:#fff;font-size:24px;cursor:pointer;box-shadow:-7px 4px 18px #0004}.head{display:flex;align-items:center;justify-content:space-between;gap:8px}.brand{font-size:15px;font-weight:750}.state{font-size:11px;color:#9fc2ff}.count{min-width:25px;padding:3px 7px;border-radius:20px;background:#17345b;text-align:center;font-weight:700}.actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}button{border:0;border-radius:9px;padding:9px;background:#1b365c;color:#fff;font:600 12px system-ui;cursor:pointer}button:hover{filter:brightness(1.13)}button[data-action="START"]{background:#15804f}button[data-action="PAUSE"]{background:#a56108}button[data-action="RESUME"]{background:#2867d8}button[data-action="FINALIZE"]{background:#a83242}button:disabled{opacity:.38;filter:saturate(.3);cursor:default}.preview-head{display:flex;align-items:center;justify-content:space-between;margin:18px 0 8px;padding-top:14px;border-top:1px solid #29476f}.preview-head strong{font-size:12px}.step-scroll{min-height:0;overflow:auto;flex:1;padding-right:3px}.step-list{display:grid;gap:8px;padding:0;margin:0;list-style:none}.step-item{display:grid;grid-template-columns:92px 1fr;gap:9px;padding:7px;border:1px solid #29476f;border-radius:10px;background:#101f35;cursor:pointer}.step-item:hover,.step-item:focus-visible{border-color:#6fa2ed;background:#142946;outline:none}.thumb{width:92px;aspect-ratio:16/9;border-radius:6px;background:#1b365c;overflow:hidden}.thumb img{width:100%;height:100%;object-fit:cover}.step-detail{min-width:0;display:flex;flex-direction:column;gap:4px}.step-detail strong{font-size:11px;color:#9fc2ff}.step-detail span{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:3;font-size:11px}.step-empty{padding:22px 8px;text-align:center;color:#9fb0ca}.foot{display:flex;justify-content:flex-end;padding-top:10px}.panel{padding:5px;background:transparent;color:#9fc2ff}.viewer{position:fixed;inset:0;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:32px;background:#02060ded;color:#fff;pointer-events:auto;font:13px/1.4 system-ui,-apple-system,Segoe UI,sans-serif}.viewer[hidden]{display:none}.viewer img{display:block;max-width:calc(100vw - 64px);max-height:calc(100vh - 110px);object-fit:contain;border-radius:8px;box-shadow:0 18px 60px #000}.viewer-title{max-width:900px;text-align:center}.viewer-close{position:absolute;top:18px;right:20px;width:42px;height:42px;border-radius:50%;font-size:24px;background:#172a48}@media(max-width:520px){.drawer{width:min(88vw,330px)}.viewer{padding:18px}.viewer img{max-width:calc(100vw - 36px)}}
+    </style><aside class="drawer" aria-label="Menu Homolog"><button class="toggle" aria-label="Fechar menu Homolog" title="Abrir ou fechar menu">›</button><div class="head"><span class="brand">🎬 Homolog</span><span class="state"></span><span class="count">0</span></div><div class="actions"><button data-action="START">Iniciar gravação</button><button data-action="PAUSE">Pausar</button><button data-action="RESUME">Continuar</button><button data-action="FINALIZE">Finalizar</button></div><div class="preview-head"><strong>Pré-visualização dos passos</strong><span class="preview-count">0</span></div><div class="step-scroll"><div class="step-empty">Nenhum passo registrado.</div><ol class="step-list"></ol></div><div class="foot"><button class="panel">Abrir painel ↗</button></div></aside><div class="viewer" role="dialog" aria-modal="true" aria-label="Visualização do passo" hidden><button class="viewer-close" aria-label="Fechar visualização">×</button><img alt=""><div class="viewer-title"></div></div>`;
+    shadow.querySelectorAll<HTMLButtonElement>('[data-action]').forEach((button) => button.addEventListener('click', () => void controlAction(button.dataset.action as 'START'|'PAUSE'|'RESUME'|'FINALIZE')));
+    shadow.querySelector<HTMLButtonElement>('.panel')?.addEventListener('click', () => { const url=new URL('http://localhost:5173/');url.searchParams.set('homologExtensionId',chrome.runtime.id);window.open(url.toString(),'_blank','noopener'); });
+    shadow.querySelector<HTMLButtonElement>('.toggle')?.addEventListener('click', () => void toggleRecordingControls());
+    const closeViewer = () => { const viewer=shadow.querySelector<HTMLElement>('.viewer');if(viewer)viewer.hidden=true; };
+    shadow.querySelector<HTMLButtonElement>('.viewer-close')?.addEventListener('click', closeViewer);
+    shadow.querySelector<HTMLElement>('.viewer')?.addEventListener('click', (event) => { if(event.target===event.currentTarget)closeViewer(); });
+    shadow.addEventListener('keydown', (event) => { if(event.key==='Escape')closeViewer(); });
+    (document.documentElement || document.body).appendChild(host);
+  }
+  const belongsToThisTab = !session || session.state === 'idle' || session.state === 'finalized' || state.ownTabId === null || session.tabId === state.ownTabId;
+  host.style.display = belongsToThisTab ? 'block' : 'none';
+  const root = host.shadowRoot;
+  const drawer=root?.querySelector('.drawer');drawer?.classList.toggle('closed',!state.controlsExpanded);
+  const toggle=root?.querySelector<HTMLButtonElement>('.toggle');if(toggle){toggle.textContent=state.controlsExpanded?'›':'‹';toggle.setAttribute('aria-label',state.controlsExpanded?'Fechar menu Homolog':'Abrir menu Homolog');}
+  const current=session?.state ?? 'idle';
+  const labels={idle:'Pronto',recording:'Gravando',paused:'Pausado',finalized:'Finalizado'};
+  const stateEl=root?.querySelector('.state');if(stateEl)stateEl.textContent=labels[current];
+  const count=root?.querySelector('.count');if(count)count.textContent=String(session?.stepCount??0);
+  const previewCount=root?.querySelector('.preview-count');if(previewCount)previewCount.textContent=`${state.controlSteps.length} passos`;
+  root?.querySelectorAll<HTMLButtonElement>('[data-action]').forEach(button=>{const action=button.dataset.action;button.disabled=action==='START'?(current==='recording'||current==='paused'):action==='PAUSE'?current!=='recording':action==='RESUME'?current!=='paused':current!=='recording'&&current!=='paused';});
+  renderStepPreviews();
+}
 
 function getRestrictionInfo(): RestrictionInfo | null {
   try {
@@ -287,7 +418,7 @@ function resolveInputSource(ev: PointerEvent | null): InteractionEvent['inputSou
 
 function sendMessage(
   msg: RuntimeMessage,
-  timeoutMs = REQUEST_TIMEOUT_MS,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
 ): Promise<RuntimeResponse> {
   return new Promise((resolve) => {
     let settled = false;
@@ -348,18 +479,11 @@ async function finalizeInteraction(id: string, interaction: InteractionEvent): P
   const now = Date.now();
   if (now - state.lastCaptureStartedAt < MIN_INTERVAL_BETWEEN_CAPTURES_MS) {
     logger.info(
-      `throttle captura: intervalo ${now - state.lastCaptureStartedAt}ms < ${MIN_INTERVAL_BETWEEN_CAPTURES_MS}ms; skip screenshot mas contabiliza interacao`,
+      `captura ignorada: intervalo ${now - state.lastCaptureStartedAt}ms < ${MIN_INTERVAL_BETWEEN_CAPTURES_MS}ms`,
     );
-    try {
-      const r = await sendMessage(msgValid.value);
-      if (!r.ok) {
-        logger.warn('bg rejeitou interacao throttle', r.error);
-        return;
-      }
-      state.dedup.recordFromInteraction(interaction);
-    } catch (e) {
-      logger.warn('erro envio throttle', e);
-    }
+    // Um passo só pode existir quando houver screenshot correspondente.
+    // Não enviamos __RECORD_INTERACTION__, pois isso incrementava o contador
+    // sem produzir evidência visual.
     return;
   }
   state.lastCaptureStartedAt = now;
@@ -373,7 +497,7 @@ async function finalizeInteraction(id: string, interaction: InteractionEvent): P
 
   try {
     insertClickMarker(interaction.viewportPoint.x, interaction.viewportPoint.y);
-    await new Promise<void>((r) => window.setTimeout(() => r(), 60));
+    setControlsCaptureHidden(true);
 
     const requestMsg = validateRuntimeMessage({
       type: '__REQUEST_SCREENSHOT__' as RuntimeMessageType,
@@ -392,6 +516,7 @@ async function finalizeInteraction(id: string, interaction: InteractionEvent): P
   } catch (e) {
     logger.warn('erro ao enviar request screenshot', e);
   } finally {
+    setControlsCaptureHidden(false);
     removeMarkerSafe();
   }
 }
@@ -402,9 +527,14 @@ function scheduleInteractionFinalization(
   delayMs = FINALIZATION_DELAY_MS,
 ): void {
   if (pending.has(id)) return;
-  const timeoutId = setTimeout(() => {
+  pending.set(id, { createdAt: Date.now(), timeoutId: null });
+  if (delayMs <= 0) {
+    // Dispara ainda durante o pointerdown. Assim o service worker recebe o
+    // pedido antes de um clique de navegação descarregar o content script.
     void finalizeInteraction(id, interaction);
-  }, delayMs);
+    return;
+  }
+  const timeoutId = setTimeout(() => void finalizeInteraction(id, interaction), delayMs);
   pending.set(id, { createdAt: Date.now(), timeoutId });
 }
 
@@ -418,13 +548,9 @@ function cancelPendingInteractions(): void {
 }
 
 function onPageHideSoon(): void {
-  const now = Date.now();
-  for (const [id, v] of pending) {
-    if (now - v.createdAt < 200) {
-      if (v.timeoutId !== null) clearTimeout(v.timeoutId);
-      pending.delete(id);
-    }
-  }
+  // Não cancele pedidos já enviados: o service worker continua a captura
+  // mesmo quando uma navegação descarrega esta página.
+  clearAllMarkerTimeouts();
 }
 
 function onPointerDownCapture(evt: Event): void {
@@ -520,7 +646,9 @@ function detachListener(): void {
 function applySessionState(s: RecordingSession | null): void {
   const wasRecording = state.recording;
   const baseRecording = s?.state === 'recording';
+  if (!wasRecording && baseRecording) state.controlsExpanded = false;
   state.sessionId = s?.sessionId ?? null;
+  state.session = s;
   if (baseRecording && s?.tabId !== null && s?.tabId !== undefined && state.ownTabId !== null) {
     if (s.tabId !== state.ownTabId) {
       logger.info(
@@ -559,6 +687,8 @@ function applySessionState(s: RecordingSession | null): void {
   if (!state.recording) {
     clearAllMarkerTimeouts();
   }
+  renderRecordingControls(s);
+  if ((s?.stepCount ?? 0) !== state.controlSteps.length) void refreshControlSteps();
 }
 
 async function resolveOwnTabId(): Promise<void> {
@@ -567,9 +697,9 @@ async function resolveOwnTabId(): Promise<void> {
       type: '__GET_MY_TAB_ID__' as RuntimeMessageType,
     });
     if (!msgValid.ok) return;
-    const resp = await sendMessage(msgValid.value, 2500);
-    if (resp.ok && typeof (resp as Record<string, unknown>).tabId === 'number') {
-      state.ownTabId = (resp as Record<string, unknown>).tabId as number;
+    const resp = await sendMessage(msgValid.value, CHROME_MESSAGE_TIMEOUT_MS);
+    if (resp.ok && typeof resp.tabId === 'number') {
+      state.ownTabId = resp.tabId;
       logger.info('content ownTabId resolvido para', state.ownTabId);
     }
   } catch (e) {
@@ -612,6 +742,8 @@ function initRuntimeListener(): void {
       if (v.value.type === '__STATE_CHANGED__' && v.value.payload?.session) {
         const s = v.value.payload.session as RecordingSession;
         applySessionState(s);
+      } else if (v.value.type === '__STEP_RECORDED__') {
+        void refreshControlSteps();
       }
     });
   } catch (e) {
@@ -656,6 +788,14 @@ function init(): void {
   }
 }
 
-init();
+// O manifest já injeta este script. Chamadas programáticas adicionais são
+// permitidas apenas como fallback; este marcador impede dois listeners na
+// mesma página e, consequentemente, dois passos para um único clique.
+if (!document.documentElement.hasAttribute(CONTENT_INSTANCE_ATTRIBUTE)) {
+  document.documentElement.setAttribute(CONTENT_INSTANCE_ATTRIBUTE, chrome.runtime.id);
+  init();
+} else {
+  logger.info('instância duplicada do content script ignorada');
+}
 
 export {};

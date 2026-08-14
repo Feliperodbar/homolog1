@@ -17,7 +17,7 @@
     "build:ext": "npm run build --workspace extension",
     "dev:ext": "npm run dev --workspace extension",
     "build:shared": "npm run build --workspace shared",
-    "build": "npm run build:shared && npm run build:web",
+    "build": "npm run build:shared && npm run build:web && npm run build:ext",
     "lint": "eslint \"web/src/**/*.{ts,tsx,js}\" \"shared/src/**/*.{ts,tsx}\" \"extension/src/**/*.{ts,tsx}\"",
     "lint:fix": "npm run lint -- --fix",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,css,md,json,html}\"",
@@ -25,7 +25,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck:web": "npm run typecheck --workspace web",
-    "typecheck": "npm run typecheck:web"
+    "typecheck:ext": "npm run typecheck --workspace extension",
+    "typecheck": "npm run typecheck:web && npm run typecheck:ext"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",

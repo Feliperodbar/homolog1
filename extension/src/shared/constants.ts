@@ -13,7 +13,9 @@ export const SCREENSHOT = {
   QUALITY: 0.82,
   MAX_WIDTH_PX: 1920,
   TIMEOUT_MS: 4000,
-  MIN_INTERVAL_BETWEEN_CAPTURES_MS: 350,
+  // captureVisibleTab possui limite de chamadas no Chromium. Mantemos margem
+  // acima de 500 ms para não perder capturas por excesso de frequência.
+  MIN_INTERVAL_BETWEEN_CAPTURES_MS: 600,
   POINTER_MARKER_ID: '__homolog_click_marker__',
   POINTER_MARKER_RADIUS_PX: 18,
   POINTER_MARKER_DURATION_MS: 1200,
@@ -28,7 +30,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   unknown: 'interacao',
 };
 
-export const HOMOLOG_PANEL_DEFAULT_URL = 'https://github.com/Feliperodbar/homolog1';
+/** Endereço do painel web executado por `npm run dev:web`. */
+export const HOMOLOG_PANEL_DEFAULT_URL = 'http://localhost:5173/';
 
 export const RESTRICTED_URL_PATTERNS: ReadonlyArray<RegExp> = [
   /^chrome:\/\//i,

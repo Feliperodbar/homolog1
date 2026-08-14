@@ -73,8 +73,7 @@ function screenshotFromPersisted(persisted: PersistedScreenshot): HomologScreens
   const image: Blob =
     persisted.imageBytes &&
     (typeof (persisted.imageBytes as unknown as { length?: number }).length === 'number' ||
-      ArrayBuffer.isView(persisted.imageBytes) ||
-      persisted.imageBytes instanceof ArrayBuffer)
+      ArrayBuffer.isView(persisted.imageBytes))
       ? uint8ArrayToBlob(persisted.imageBytes, mimeOrFmt)
       : persisted.image && (persisted.image as unknown as object) instanceof Blob
         ? (persisted.image as Blob)
@@ -122,8 +121,9 @@ type RecordingStepLike = Pick<
 
 type RecordingSessionLike = Pick<
   RecordingSession,
-  'sessionId' | 'state' | 'tabId' | 'stepCount' | 'startedAt' | 'endedAt' | 'durationMs'
+  'sessionId' | 'state' | 'tabId' | 'stepCount' | 'startedAt' | 'endedAt'
 > & {
+  durationMs?: number;
   createdAt?: number;
   updatedAt?: number;
   name?: string;
@@ -316,7 +316,7 @@ export async function listProjects(opts: {
     return await withTransaction(STORE.PROJECTS, 'readonly', (tx) => {
       return new Promise<HomologProject[]>((resolve, reject) => {
         const store = tx.objectStore(STORE.PROJECTS);
-        let source: IDBObjectStore | IDBIndex<HomologProject, unknown> = store;
+        let source: IDBObjectStore | IDBIndex = store;
         if (sortBy === 'name') source = store.index('by_name');
         else if (sortBy === 'createdAt') source = store.index('by_createdAt');
         else source = store.index('by_updatedAt');
@@ -497,7 +497,7 @@ export async function addStepWithScreenshot(
       actionType: stepLike.actionType ?? 'unknown',
       interactionId: stepLike.interactionId,
       screenshotId,
-      target: stepLike.target as object & Record<string, unknown>,
+      target: stepLike.target as unknown as object & Record<string, unknown>,
       stableSelector: stepLike.stableSelector ?? null,
       url: stepLike.url,
       pageTitle: stepLike.pageTitle ?? '',

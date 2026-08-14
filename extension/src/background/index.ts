@@ -39,13 +39,26 @@ import {
   getSaveIndicatorSnapshot,
   subscribeSaveIndicator,
   getSessionById,
+  getSetting,
+  exportBackup,
 } from '../shared/storage/repository';
+import type { HomologSession } from '../shared/storage/types';
 
 const logger = {
   info: (...args: unknown[]) => console.log('[homolog:bg]', ...args),
   warn: (...args: unknown[]) => console.warn('[homolog:bg]', ...args),
   error: (...args: unknown[]) => console.error('[homolog:bg]', ...args),
 };
+
+// Evita duas chamadas simultâneas a captureVisibleTab e garante sequência
+// determinística quando interações chegam quase juntas.
+let screenshotQueue: Promise<void> = Promise.resolve();
+
+function enqueueScreenshot<T>(operation: () => Promise<T>): Promise<T> {
+  const result = screenshotQueue.then(operation, operation);
+  screenshotQueue = result.then(() => undefined, () => undefined);
+  return result;
+}
 
 function setActionBadge(state: RecordingSession): void {
   if (!chrome.action) return;
@@ -368,7 +381,9 @@ async function persistRecordingSessionOnIdb(
 
 async function onStart(): Promise<RuntimeResponse> {
   const current = await loadSession();
-  const tabId = current.tabId ?? (await getActiveTabId());
+  // Cada acionamento de "Iniciar gravação" pertence à aba ativa naquele
+  // momento e cria uma sessão independente das gravações anteriores.
+  const tabId = await getActiveTabId();
   let session = current;
   if (session.state === 'idle') {
     const fresh = resetSession(session, tabId).session;
@@ -487,29 +502,19 @@ async function captureTabDataUrl(
   tabIdArg: number | null | undefined,
 ): Promise<{ dataUrl: string; tabId: number | null }> {
   const tabId = typeof tabIdArg === 'number' ? tabIdArg : null;
-  const captureOptions: { format?: 'jpeg' | 'png'; quality?: number } = {
+  if (tabId === null) throw new Error('nao foi possivel identificar a aba da sessao');
+  const tab = await chrome.tabs.get(tabId);
+  if (typeof tab.windowId !== 'number') throw new Error('nao foi possivel identificar a janela da aba');
+  if (!tab.active) throw new Error('a aba da gravacao nao esta ativa');
+  const captureOptions: chrome.tabs.CaptureVisibleTabOptions = {
     format: 'jpeg',
-    quality: Math.max(0.1, Math.min(1, SCREENSHOT.QUALITY)),
+    quality: Math.max(1, Math.min(100, Math.round(SCREENSHOT.QUALITY * 100))),
   };
   try {
-    if (tabId !== null && typeof chrome.tabs.captureVisibleTab === 'function') {
-      const dataUrl = await chrome.tabs.captureVisibleTab(
-        (chrome.windows as unknown as { WINDOW_ID_CURRENT?: number }).WINDOW_ID_CURRENT ??
-          undefined,
-        captureOptions,
-      );
-      return { dataUrl: typeof dataUrl === 'string' ? dataUrl : '', tabId };
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, captureOptions);
+    if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
+      throw new Error('o navegador retornou uma captura invalida');
     }
-  } catch (e) {
-    logger.warn('captureVisibleTab falhou; tentando sem windowId', e);
-  }
-  try {
-    const dataUrl = await (
-      chrome.tabs.captureVisibleTab as (opts?: {
-        format?: 'jpeg' | 'png';
-        quality?: number;
-      }) => Promise<string> | string
-    )(captureOptions);
     return { dataUrl: typeof dataUrl === 'string' ? dataUrl : '', tabId };
   } catch (e) {
     throw new Error(
@@ -566,6 +571,21 @@ function isDuplicateInteractionStep(
   return false;
 }
 
+function isDuplicatePhysicalClick(
+  steps: Array<RecordingStep>,
+  interaction: InteractionEvent,
+  windowMs = 80,
+): boolean {
+  const previous = steps.at(-1);
+  if (!previous) return false;
+  return (
+    Math.abs(interaction.timestamp - previous.timestamp) <= windowMs &&
+    interaction.stableSelector === previous.stableSelector &&
+    Math.abs(interaction.viewportPoint.x - previous.viewportPoint.x) <= 2 &&
+    Math.abs(interaction.viewportPoint.y - previous.viewportPoint.y) <= 2
+  );
+}
+
 async function onRequestScreenshot(
   payload: Record<string, unknown> | undefined,
   sender: chrome.runtime.MessageSender | undefined,
@@ -595,7 +615,10 @@ async function onRequestScreenshot(
   }
 
   const priorSteps = await loadSteps(session.sessionId);
-  if (isDuplicateInteractionStep(priorSteps, ev.interactionId, 1500, Date.now())) {
+  if (
+    isDuplicateInteractionStep(priorSteps, ev.interactionId, 1500, Date.now()) ||
+    isDuplicatePhysicalClick(priorSteps, ev)
+  ) {
     return { ok: false, error: 'step duplicado para mesma interacao; ignorado' };
   }
 
@@ -794,7 +817,7 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onInstalle
         case '__RECORD_INTERACTION__':
           return onRecordInteraction(message.payload, sender);
         case '__REQUEST_SCREENSHOT__':
-          return onRequestScreenshot(message.payload, sender);
+          return enqueueScreenshot(() => onRequestScreenshot(message.payload, sender));
         default:
           return {
             ok: false,
@@ -804,6 +827,27 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onInstalle
     })()
       .then(sendResponse)
       .catch((e) => sendResponse({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+    return true;
+  });
+
+  // O painel web vive em outra origem e, portanto, não enxerga o IndexedDB da
+  // extensão. Esta API externa, limitada pelo manifest a localhost, transfere
+  // uma cópia local dos projetos, sessões, passos e imagens para o painel.
+  chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
+    const senderUrl = sender.url ?? '';
+    const allowed = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(senderUrl);
+    if (!allowed || message?.type !== 'HOMOLOG_PANEL_SYNC') {
+      sendResponse({ ok: false, error: 'Solicitação externa não autorizada.' });
+      return false;
+    }
+    exportBackup({ includeScreenshots: true })
+      .then((backup) => sendResponse({ ok: true, backup }))
+      .catch((error) =>
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : 'Não foi possível sincronizar o painel.',
+        }),
+      );
     return true;
   });
 }

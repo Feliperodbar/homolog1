@@ -314,10 +314,12 @@ export async function blobToUint8Array(blob: Blob): Promise<Uint8Array> {
   });
 }
 
-export function uint8ArrayToBlob(bytes: unknown, mime: string): Blob {
-  const safeBytes = normalizeBytes(bytes);
+export function uint8ArrayToBlob(input: unknown, mime: string): Blob {
+  const safeBytes = normalizeBytes(input);
   const m = (mime || 'application/octet-stream').toString();
-  const blob = new Blob([safeBytes], { type: m });
+  const copiedBytes = new Uint8Array(safeBytes.byteLength);
+  copiedBytes.set(safeBytes);
+  const blob = new Blob([copiedBytes.buffer], { type: m });
   cacheBlobBytes(blob, safeBytes, m);
   return blob;
 }

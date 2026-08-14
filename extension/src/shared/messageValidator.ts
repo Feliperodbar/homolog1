@@ -91,7 +91,7 @@ export function validateRuntimeMessage(
   if (msg.payload !== undefined && msg.payload !== null && !isRecord(msg.payload)) {
     return { ok: false, error: 'payload deve ser objeto ou undefined' };
   }
-  return { ok: true, value: msg as RuntimeMessage };
+  return { ok: true, value: msg as unknown as RuntimeMessage };
 }
 
 export function validateRecordingSession(s: unknown): s is RecordingSession {
@@ -141,7 +141,7 @@ export function validateInteractionEvent(
     return { ok: false, error: 'inputSource invalido' };
   }
   if (typeof ev.isTrusted !== 'boolean') return { ok: false, error: 'isTrusted invalido' };
-  return { ok: true, value: ev as InteractionEvent };
+  return { ok: true, value: ev as unknown as InteractionEvent };
 }
 
 function isDataUrlImageLoose(x: unknown, maxLen = SCREENSHOT.MAX_DATA_URL_LENGTH): x is string {
@@ -198,7 +198,7 @@ export function validateRecordingStep(
   if (!(s.tabId === null || typeof s.tabId === 'number'))
     return { ok: false, error: 'step tabId invalido' };
   if (typeof s.isTrusted !== 'boolean') return { ok: false, error: 'step isTrusted invalido' };
-  return { ok: true, value: s as RecordingStep };
+  return { ok: true, value: s as unknown as RecordingStep };
 }
 
 export const _priv = {

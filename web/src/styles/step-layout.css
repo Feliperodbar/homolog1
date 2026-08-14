@@ -1,0 +1,146 @@
+.step-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(360px, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.step-card > .step-number {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 2;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 22%);
+}
+
+.step-card > .thumbnail {
+  grid-column: 1;
+  grid-row: 1;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 82%, #000);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 14%);
+}
+
+.step-card > .thumbnail img {
+  object-fit: contain;
+  background: #0b1020;
+}
+
+.step-card > .step-editor {
+  grid-column: 2;
+  grid-row: 1;
+  width: 100%;
+}
+
+.step-card > .step-support {
+  grid-column: 1;
+  grid-row: 2;
+  width: 100%;
+}
+
+.step-card .step-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  width: 100%;
+}
+
+.step-card .step-fields .wide {
+  grid-column: 1 / -1;
+}
+
+.step-card textarea {
+  width: 100%;
+  height: 82px;
+  min-height: 82px;
+  max-height: 82px;
+  resize: none;
+  overflow-y: auto;
+}
+
+.step-card label.wide textarea {
+  height: 94px;
+  min-height: 94px;
+  max-height: 94px;
+}
+
+.step-card .support-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.step-card .support-fields label {
+  font-size: 12px;
+}
+
+.step-card .support-fields textarea {
+  display: block;
+  min-height: 76px;
+  margin-top: 5px;
+}
+
+.step-card .support-fields .wide {
+  grid-column: 1 / -1;
+}
+
+.step-card .step-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  padding: 9px;
+}
+
+.step-card .step-icon-button svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@media (max-width: 1050px) {
+  .step-card {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .step-card > .step-number {
+    top: 10px;
+    left: 10px;
+  }
+
+  .step-card > .thumbnail {
+    grid-column: 1;
+    width: 100%;
+  }
+
+  .step-card > .step-editor,
+  .step-card > .step-support {
+    grid-column: 1;
+  }
+
+  .step-card > .step-editor {
+    grid-row: 2;
+  }
+
+  .step-card > .step-support {
+    grid-row: 3;
+  }
+}
+
+@media (max-width: 620px) {
+  .step-card .step-fields,
+  .step-card .support-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .step-card .step-fields .wide,
+  .step-card .support-fields .wide {
+    grid-column: auto;
+  }
+}

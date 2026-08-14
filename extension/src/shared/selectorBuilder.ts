@@ -177,6 +177,7 @@ export function buildStableSelector(input: unknown): string {
 }
 
 export function buildStableSelectorWithRoot(input: unknown, root?: unknown): string {
+  const SEL_MAX = DEDUPLICATION.SELECTOR_MAX_LENGTH;
   const base = buildStableSelector(input);
   if (!root || !isPlainElement(input)) return base;
   const el = input as Element;
