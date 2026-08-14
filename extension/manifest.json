@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Homolog Recorder",
   "short_name": "Homolog",
-  "version": "0.1.5",
+  "version": "0.1.27",
   "description": "Extensão Chrome/Edge para gravar passos de teste automaticamente. Integra com o painel Homolog Web.",
   "author": "Felipe Rodrigues",
   "minimum_chrome_version": "114",

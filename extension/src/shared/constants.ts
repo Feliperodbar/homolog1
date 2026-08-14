@@ -15,7 +15,7 @@ export const SCREENSHOT = {
   TIMEOUT_MS: 4000,
   // captureVisibleTab possui limite de chamadas no Chromium. Mantemos margem
   // acima de 500 ms para não perder capturas por excesso de frequência.
-  MIN_INTERVAL_BETWEEN_CAPTURES_MS: 600,
+  MIN_INTERVAL_BETWEEN_CAPTURES_MS: 525,
   POINTER_MARKER_ID: '__homolog_click_marker__',
   POINTER_MARKER_RADIUS_PX: 18,
   POINTER_MARKER_DURATION_MS: 1200,

@@ -70,14 +70,23 @@ async function _screenshotToPersisted(domain: HomologScreenshot): Promise<Persis
 function screenshotFromPersisted(persisted: PersistedScreenshot): HomologScreenshot {
   const mimeOrFmt: string =
     persisted.imageMime || persisted.format || 'image/jpeg';
-  const image: Blob =
-    persisted.imageBytes &&
-    (typeof (persisted.imageBytes as unknown as { length?: number }).length === 'number' ||
-      ArrayBuffer.isView(persisted.imageBytes))
-      ? uint8ArrayToBlob(persisted.imageBytes, mimeOrFmt)
-      : persisted.image && (persisted.image as unknown as object) instanceof Blob
-        ? (persisted.image as Blob)
-        : new Blob([new Uint8Array(0)], { type: mimeOrFmt });
+  const rawBytes = persisted.imageBytes as unknown;
+  let image: Blob;
+  if (rawBytes instanceof ArrayBuffer) {
+    image = uint8ArrayToBlob(new Uint8Array(rawBytes), mimeOrFmt);
+  } else if (ArrayBuffer.isView(rawBytes)) {
+    const view = rawBytes as ArrayBufferView;
+    image = uint8ArrayToBlob(
+      new Uint8Array(view.buffer, view.byteOffset, view.byteLength),
+      mimeOrFmt,
+    );
+  } else if (Array.isArray(rawBytes)) {
+    image = uint8ArrayToBlob(new Uint8Array(rawBytes), mimeOrFmt);
+  } else if (persisted.image instanceof Blob) {
+    image = persisted.image;
+  } else {
+    image = new Blob([new Uint8Array(0)], { type: mimeOrFmt });
+  }
   return {
     screenshotId: persisted.screenshotId,
     stepId: persisted.stepId,
@@ -668,6 +677,59 @@ export async function setSetting<T = unknown>(key: SettingsKey, value: T): Promi
 }
 
 /* --- Delete + cascata --- */
+export async function deleteStepCascade(stepId: StepId): Promise<void> {
+  beginSave();
+  try {
+    await openDatabase();
+    await withTransaction([STORE.STEPS, STORE.SCREENSHOTS], 'readwrite', async (tx) => {
+      const shots = tx.objectStore(STORE.SCREENSHOTS);
+      const shot = await wrapRequest<PersistedScreenshot | undefined>(
+        shots.index(INDEX.SCREENSHOTS_BY_STEP).get([stepId]),
+      );
+      if (shot) await wrapRequest(shots.delete(shot.screenshotId));
+      await wrapRequest(tx.objectStore(STORE.STEPS).delete(stepId));
+    });
+    endSave();
+  } catch (e) {
+    endSave(e instanceof Error ? e.message : String(e));
+    throw friendlyStorageError(e, `excluir passo ${stepId}`);
+  }
+}
+
+export async function clearSessionSteps(sessionId: SessionId): Promise<number> {
+  const steps = await listStepsBySession(sessionId);
+  for (const step of steps) await deleteStepCascade(step.stepId);
+  return steps.length;
+}
+
+export async function moveSessionEvidenceToProject(
+  sessionId: SessionId,
+  projectId: ProjectId,
+): Promise<{ steps: number; screenshots: number }> {
+  await openDatabase();
+  const steps = await listStepsBySession(sessionId);
+  let screenshots = 0;
+  await withTransaction([STORE.STEPS, STORE.SCREENSHOTS], 'readwrite', async (tx) => {
+    const stepStore = tx.objectStore(STORE.STEPS);
+    for (const step of steps) {
+      await wrapRequest(stepStore.put({ ...step, projectId }));
+    }
+    const shotIndex = tx.objectStore(STORE.SCREENSHOTS).index('by_sessionId');
+    await new Promise<void>((resolve, reject) => {
+      const cursorRequest = shotIndex.openCursor(getKeyRange().only(sessionId));
+      cursorRequest.onsuccess = () => {
+        const cursor = cursorRequest.result;
+        if (!cursor) return resolve();
+        cursor.update({ ...(cursor.value as PersistedScreenshot), projectId });
+        screenshots += 1;
+        cursor.continue();
+      };
+      cursorRequest.onerror = () => reject(cursorRequest.error ?? new Error('cursor de screenshots falhou'));
+    });
+  });
+  return { steps: steps.length, screenshots };
+}
+
 export async function deleteSessionCascade(sessionId: SessionId): Promise<{
   deletedSession: boolean;
   deletedSteps: number;
@@ -1014,16 +1076,18 @@ export async function exportBackup(
         for (const step of steps) {
           if (!projectIdSet.has(step.projectId)) continue;
           allSteps.push(step);
-          if (step.screenshotId && (opts.includeScreenshots ?? true)) {
+          if (step.screenshotId) {
             const shot = await getScreenshotById(step.screenshotId);
             if (shot) {
-              const dataUrl = await blobToDataUrl(shot.image);
+              const dataUrl = (opts.includeScreenshots ?? true)
+                ? await blobToDataUrl(shot.image)
+                : undefined;
               allShotsMeta.push({
                 screenshotId: shot.screenshotId,
                 stepId: shot.stepId,
                 sessionId: shot.sessionId,
                 projectId: shot.projectId,
-                imageDataUrl: dataUrl,
+                ...(dataUrl ? { imageDataUrl: dataUrl } : {}),
                 format: shot.format,
                 widthPx: shot.widthPx,
                 heightPx: shot.heightPx,

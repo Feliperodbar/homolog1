@@ -134,7 +134,7 @@ export interface HomologBackupV1 {
   projects: Array<HomologProject>;
   sessions: Array<HomologSession>;
   steps: Array<HomologStep>;
-  screenshotsMeta: Array<Omit<HomologScreenshot, 'image'> & { imageDataUrl: string }>;
+  screenshotsMeta: Array<Omit<HomologScreenshot, 'image'> & { imageDataUrl?: string }>;
   settings: Array<HomologSettingEntry>;
 }
 

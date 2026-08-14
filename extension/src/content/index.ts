@@ -5,10 +5,10 @@ import {
   SCREENSHOT,
   STORAGE_KEY_RECORDING,
 } from '../shared/constants';
-import { InteractionDeduplicator } from '../shared/dedupe';
 import { computeAccessibleName, extractVisibleText } from '../shared/accessibleName';
 import { detectSensitivity, sanitizeValue, sanitizeVisibleText } from '../shared/sensitiveFields';
 import { buildStableSelector } from '../shared/selectorBuilder';
+import { hasOwnStorageChange } from '../shared/storageChange';
 import { validateInteractionEvent, validateRuntimeMessage } from '../shared/messageValidator';
 import { uuidv4 } from '../shared/uuid';
 import type {
@@ -24,9 +24,9 @@ const BANNER_ID = '__homolog_restricted_banner__';
 const MARKER_ID = SCREENSHOT.POINTER_MARKER_ID;
 const CONTROLS_ID = '__homolog_recording_controls__';
 const CONTENT_INSTANCE_ATTRIBUTE = 'data-homolog-recorder-active';
+const CONTENT_INSTANCE_GLOBAL = '__homologRecorderContentInitialized__';
 const OWN_ELEMENT_MARKERS: ReadonlyArray<string> = [BANNER_ID, MARKER_ID, CONTROLS_ID];
 const FINALIZATION_DELAY_MS = 0;
-const MIN_INTERVAL_BETWEEN_CAPTURES_MS = SCREENSHOT.MIN_INTERVAL_BETWEEN_CAPTURES_MS;
 const REQUEST_TIMEOUT_MS = SCREENSHOT.TIMEOUT_MS;
 
 const pending = new Map<
@@ -45,25 +45,25 @@ const state: {
   sessionId: string | null;
   ownTabId: number | null;
   restricted: boolean;
-  dedup: InteractionDeduplicator;
   listenerAttached: boolean;
-  lastCaptureStartedAt: number;
   markerTimeoutIds: Array<number>;
   session: RecordingSession | null;
   controlSteps: Array<RecordingStep>;
   controlsExpanded: boolean;
+  projectContext: { name: string; functionality: string; locked?: boolean };
+  pendingPanelOpen: boolean;
 } = {
   recording: false,
   sessionId: null,
   ownTabId: null,
   restricted: false,
-  dedup: new InteractionDeduplicator(),
   listenerAttached: false,
-  lastCaptureStartedAt: 0,
   markerTimeoutIds: [],
   session: null,
   controlSteps: [],
   controlsExpanded: false,
+  projectContext: { name: 'Projeto padrão', functionality: '', locked: false },
+  pendingPanelOpen: false,
 };
 
 function setControlsCaptureHidden(hidden: boolean): void {
@@ -74,22 +74,26 @@ function setControlsCaptureHidden(hidden: boolean): void {
 async function controlAction(type: 'START' | 'PAUSE' | 'RESUME' | 'FINALIZE'): Promise<void> {
   const response = await sendMessage({ type });
   if (!response.ok) logger.warn('controle flutuante rejeitado', response.error);
-  if (response.state) applySessionState(response.state);
+  if (response.state) {
+    applySessionState(response.state);
+    if (response.ok && type === 'START') {
+      // Recolhe uma única vez ao iniciar. Atualizações posteriores de passos
+      // preservam esse estado visual e nunca reabrem o menu automaticamente.
+      state.controlsExpanded = false;
+      renderRecordingControls(response.state);
+    }
+    if (response.ok && type === 'RESUME') {
+      // Ao continuar, devolve toda a área útil à página e mantém a mesma sessão.
+      state.controlsExpanded = false;
+      renderRecordingControls(response.state);
+    }
+  }
 }
 
 async function toggleRecordingControls(): Promise<void> {
-  if (state.controlsExpanded) {
-    state.controlsExpanded = false;
-    renderRecordingControls(state.session);
-    return;
-  }
-  state.controlsExpanded = true;
-  if (state.session?.state === 'recording') {
-    // Abrir o editor durante uma gravação pausa a captura para que os cliques
-    // no menu e nas prévias nunca sejam confundidos com passos da evidência.
-    await controlAction('PAUSE');
-    return;
-  }
+  // Abrir e fechar o menu é apenas uma alteração visual. A sessão somente
+  // pausa quando o usuário pressiona explicitamente o botão "Pausar".
+  state.controlsExpanded = !state.controlsExpanded;
   renderRecordingControls(state.session);
 }
 
@@ -99,7 +103,9 @@ function renderStepPreviews(): void {
   const empty = root?.querySelector<HTMLElement>('.step-empty');
   if (!list || !empty) return;
   list.replaceChildren();
-  const recent = state.controlSteps.slice(-12).reverse();
+  const recent = state.controlSteps
+    .slice(-12)
+    .sort((a, b) => a.sequence - b.sequence);
   empty.hidden = recent.length > 0;
   for (const step of recent) {
     const item = document.createElement('li');
@@ -121,7 +127,16 @@ function renderStepPreviews(): void {
     title.textContent = `Passo ${step.sequence}`;
     const description = document.createElement('span');
     description.textContent = step.description || 'Clique registrado';
-    detail.append(title, description);
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'button';
+    deleteButton.className = 'step-delete';
+    deleteButton.textContent = '🗑 Excluir';
+    deleteButton.setAttribute('aria-label', `Excluir passo ${step.sequence}`);
+    deleteButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      void deleteControlStep(step.stepId);
+    });
+    detail.append(title, description, deleteButton);
     item.append(thumb, detail);
     const openViewer = () => {
       if (!step.screenshotDataUrl) return;
@@ -154,6 +169,121 @@ async function refreshControlSteps(): Promise<void> {
   renderRecordingControls(state.session);
 }
 
+async function deleteControlStep(stepId: string): Promise<void> {
+  const response = await sendMessage({ type: '__DELETE_STEP__', payload: { stepId } });
+  if (!response.ok) {
+    logger.warn('não foi possível excluir o passo', response.error);
+    return;
+  }
+  state.controlSteps = response.steps ?? state.controlSteps.filter((step) => step.stepId !== stepId);
+  if (response.state) applySessionState(response.state);
+  renderRecordingControls(state.session);
+}
+
+async function clearControlSteps(): Promise<void> {
+  if (!window.confirm('Excluir todos os passos desta sessão?')) return;
+  const response = await sendMessage({ type: '__CLEAR_STEPS__' });
+  if (!response.ok) {
+    logger.warn('não foi possível limpar os passos', response.error);
+    return;
+  }
+  state.controlSteps = [];
+  if (response.state) applySessionState(response.state);
+  renderRecordingControls(state.session);
+}
+
+async function loadProjectContext(): Promise<void> {
+  const response = await sendMessage({ type: '__GET_PROJECT_CONTEXT__' });
+  if (response.ok && response.projectContext) {
+    state.projectContext = response.projectContext;
+    renderRecordingControls(state.session);
+  }
+}
+
+async function saveProjectContext(): Promise<void> {
+  const root = document.getElementById(CONTROLS_ID)?.shadowRoot;
+  const name = root?.querySelector<HTMLInputElement>('.project-name')?.value ?? '';
+  const functionality = root?.querySelector<HTMLInputElement>('.project-functionality')?.value ?? '';
+  const response = await sendMessage({
+    type: '__SAVE_PROJECT_CONTEXT__',
+    payload: { name, functionality },
+  });
+  if (!response.ok) {
+    logger.warn('não foi possível salvar os dados do projeto', response.error);
+    return;
+  }
+  if (response.projectContext) state.projectContext = response.projectContext;
+  renderRecordingControls(state.session);
+}
+
+function openHomologPanel(): void {
+  const url = new URL('http://localhost:5173/');
+  url.searchParams.set('homologExtensionId', chrome.runtime.id);
+  window.open(url.toString(), '_blank', 'noopener');
+}
+
+function requestPanelOpen(): void {
+  const current = state.session?.state;
+  if (current === 'recording' || current === 'paused') {
+    state.pendingPanelOpen = true;
+    showPanelRecordingAlert();
+    return;
+  }
+  openHomologPanel();
+}
+
+function showPanelRecordingAlert(): void {
+  const root = document.getElementById(CONTROLS_ID)?.shadowRoot;
+  if (!root || root.querySelector('.panel-recording-alert')) return;
+  const dialog = document.createElement('div');
+  dialog.className = 'panel-recording-alert';
+  dialog.setAttribute('role', 'alertdialog');
+  dialog.setAttribute('aria-modal', 'true');
+  dialog.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;padding:22px;background:rgba(10,15,23,.82);pointer-events:auto';
+  dialog.innerHTML = '<div style="box-sizing:border-box;width:min(402px,calc(100vw - 44px));padding:23px 19px 19px;border:1px solid #315f91;border-radius:12px;background:#0d213a;color:#fff;box-shadow:0 18px 48px rgba(0,0,0,.48)"><p style="margin:0 0 18px;font:700 13px/1.65 system-ui,-apple-system,Segoe UI,sans-serif">Finalize a gravação atual para acessar o painel</p><button class="alert-ok" type="button" style="display:block;width:100%;min-height:38px;border:0;border-radius:9px;background:#188a57;color:#fff;font:700 12px system-ui">Entendi</button></div>';
+  dialog.querySelector<HTMLButtonElement>('.alert-ok')?.addEventListener('click', () => dialog.remove());
+  root.appendChild(dialog);
+  dialog.querySelector<HTMLButtonElement>('.alert-ok')?.focus();
+}
+
+function confirmNewProject(): Promise<boolean> {
+  return new Promise((resolve) => {
+    const root = document.getElementById(CONTROLS_ID)?.shadowRoot;
+    if (!root) return resolve(false);
+    root.querySelector('.new-project-confirm')?.remove();
+    const dialog = document.createElement('div');
+    dialog.className = 'new-project-confirm';
+    dialog.setAttribute('role', 'alertdialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;padding:22px;background:rgba(10,15,23,.82);pointer-events:auto';
+    dialog.innerHTML = '<div style="box-sizing:border-box;width:min(402px,calc(100vw - 44px));padding:23px 19px 19px;border:1px solid #315f91;border-radius:12px;background:#0d213a;color:#fff;box-shadow:0 18px 48px rgba(0,0,0,.48)"><p style="margin:0 0 18px;font:700 13px/1.65 system-ui,-apple-system,Segoe UI,sans-serif">Seus passos atuais serão enviados ao painel, deseja continuar?</p><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><button class="confirm-no" type="button" style="min-height:38px;border:2px solid #dce7f5;border-radius:9px;background:#52637a;color:#fff;font-weight:700">Não</button><button class="confirm-yes" type="button" style="min-height:38px;border:0;border-radius:9px;background:#188a57;color:#fff;font-weight:700">Sim</button></div></div>';
+    const finish = (answer: boolean) => {
+      dialog.remove();
+      resolve(answer);
+    };
+    dialog.querySelector<HTMLButtonElement>('.confirm-no')?.addEventListener('click', () => finish(false));
+    dialog.querySelector<HTMLButtonElement>('.confirm-yes')?.addEventListener('click', () => finish(true));
+    root.appendChild(dialog);
+    dialog.querySelector<HTMLButtonElement>('.confirm-no')?.focus();
+  });
+}
+
+async function createNewProjectContext(): Promise<void> {
+  if (!(await confirmNewProject())) return;
+  const response = await sendMessage({ type: '__NEW_PROJECT_CONTEXT__' });
+  if (!response.ok) {
+    logger.warn('não foi possível criar o novo projeto', response.error);
+    return;
+  }
+  state.controlSteps = [];
+  if (response.projectContext) state.projectContext = response.projectContext;
+  if (response.state) applySessionState(response.state);
+  state.controlsExpanded = true;
+  renderRecordingControls(state.session);
+  document.getElementById(CONTROLS_ID)?.shadowRoot
+    ?.querySelector<HTMLInputElement>('.project-name')?.focus();
+}
+
 function renderRecordingControls(session: RecordingSession | null): void {
   if (typeof document === 'undefined' || state.restricted) return;
   let host = document.getElementById(CONTROLS_ID) as HTMLDivElement | null;
@@ -163,11 +293,31 @@ function renderRecordingControls(session: RecordingSession | null): void {
     host.style.cssText = 'all:initial;position:fixed;inset:0 0 0 auto;z-index:2147483646;pointer-events:none';
     const shadow = host.attachShadow({ mode: 'open' });
     shadow.innerHTML = `<style>
-      :host{all:initial}.drawer{position:absolute;top:0;right:0;width:330px;height:100vh;padding:18px 14px 14px;box-sizing:border-box;border-left:1px solid #29476f;background:#0b1729f7;color:#eaf2ff;box-shadow:-16px 0 40px #0006;font:13px/1.35 system-ui,-apple-system,Segoe UI,sans-serif;pointer-events:auto;transform:translateX(0);transition:transform .22s ease;display:flex;flex-direction:column}.drawer.closed{transform:translateX(100%)}.toggle{position:absolute;top:50%;left:-38px;width:38px;height:64px;transform:translateY(-50%);border:1px solid #29476f;border-right:0;border-radius:12px 0 0 12px;background:#0b1729f7;color:#fff;font-size:24px;cursor:pointer;box-shadow:-7px 4px 18px #0004}.head{display:flex;align-items:center;justify-content:space-between;gap:8px}.brand{font-size:15px;font-weight:750}.state{font-size:11px;color:#9fc2ff}.count{min-width:25px;padding:3px 7px;border-radius:20px;background:#17345b;text-align:center;font-weight:700}.actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}button{border:0;border-radius:9px;padding:9px;background:#1b365c;color:#fff;font:600 12px system-ui;cursor:pointer}button:hover{filter:brightness(1.13)}button[data-action="START"]{background:#15804f}button[data-action="PAUSE"]{background:#a56108}button[data-action="RESUME"]{background:#2867d8}button[data-action="FINALIZE"]{background:#a83242}button:disabled{opacity:.38;filter:saturate(.3);cursor:default}.preview-head{display:flex;align-items:center;justify-content:space-between;margin:18px 0 8px;padding-top:14px;border-top:1px solid #29476f}.preview-head strong{font-size:12px}.step-scroll{min-height:0;overflow:auto;flex:1;padding-right:3px}.step-list{display:grid;gap:8px;padding:0;margin:0;list-style:none}.step-item{display:grid;grid-template-columns:92px 1fr;gap:9px;padding:7px;border:1px solid #29476f;border-radius:10px;background:#101f35;cursor:pointer}.step-item:hover,.step-item:focus-visible{border-color:#6fa2ed;background:#142946;outline:none}.thumb{width:92px;aspect-ratio:16/9;border-radius:6px;background:#1b365c;overflow:hidden}.thumb img{width:100%;height:100%;object-fit:cover}.step-detail{min-width:0;display:flex;flex-direction:column;gap:4px}.step-detail strong{font-size:11px;color:#9fc2ff}.step-detail span{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:3;font-size:11px}.step-empty{padding:22px 8px;text-align:center;color:#9fb0ca}.foot{display:flex;justify-content:flex-end;padding-top:10px}.panel{padding:5px;background:transparent;color:#9fc2ff}.viewer{position:fixed;inset:0;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:32px;background:#02060ded;color:#fff;pointer-events:auto;font:13px/1.4 system-ui,-apple-system,Segoe UI,sans-serif}.viewer[hidden]{display:none}.viewer img{display:block;max-width:calc(100vw - 64px);max-height:calc(100vh - 110px);object-fit:contain;border-radius:8px;box-shadow:0 18px 60px #000}.viewer-title{max-width:900px;text-align:center}.viewer-close{position:absolute;top:18px;right:20px;width:42px;height:42px;border-radius:50%;font-size:24px;background:#172a48}@media(max-width:520px){.drawer{width:min(88vw,330px)}.viewer{padding:18px}.viewer img{max-width:calc(100vw - 36px)}}
-    </style><aside class="drawer" aria-label="Menu Homolog"><button class="toggle" aria-label="Fechar menu Homolog" title="Abrir ou fechar menu">›</button><div class="head"><span class="brand">🎬 Homolog</span><span class="state"></span><span class="count">0</span></div><div class="actions"><button data-action="START">Iniciar gravação</button><button data-action="PAUSE">Pausar</button><button data-action="RESUME">Continuar</button><button data-action="FINALIZE">Finalizar</button></div><div class="preview-head"><strong>Pré-visualização dos passos</strong><span class="preview-count">0</span></div><div class="step-scroll"><div class="step-empty">Nenhum passo registrado.</div><ol class="step-list"></ol></div><div class="foot"><button class="panel">Abrir painel ↗</button></div></aside><div class="viewer" role="dialog" aria-modal="true" aria-label="Visualização do passo" hidden><button class="viewer-close" aria-label="Fechar visualização">×</button><img alt=""><div class="viewer-title"></div></div>`;
+      :host{all:initial}.drawer{position:absolute;top:0;right:0;width:330px;height:100vh;padding:18px 14px 14px;box-sizing:border-box;border-left:1px solid #29476f;background:#0b1729f7;color:#eaf2ff;box-shadow:-16px 0 40px #0006;font:13px/1.35 system-ui,-apple-system,Segoe UI,sans-serif;pointer-events:auto;transform:translateX(0);transition:transform .22s ease;display:flex;flex-direction:column}.drawer.closed{transform:translateX(100%)}.toggle{position:absolute;top:50%;left:-38px;width:38px;height:64px;transform:translateY(-50%);border:1px solid #29476f;border-right:0;border-radius:12px 0 0 12px;background:#0b1729f7;color:#fff;font-size:24px;cursor:pointer;box-shadow:-7px 4px 18px #0004}.head{display:flex;align-items:center;justify-content:space-between;gap:8px}.brand{font-size:15px;font-weight:750}.state{font-size:11px;color:#9fc2ff}.count{min-width:25px;padding:3px 7px;border-radius:20px;background:#17345b;text-align:center;font-weight:700}.actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:14px}button{border:0;border-radius:9px;padding:9px;background:#1b365c;color:#fff;font:600 12px system-ui;cursor:pointer}button:hover{filter:brightness(1.13)}button[data-action="START"]{background:#15804f}button[data-action="PAUSE"]{background:#a56108}button[data-action="RESUME"]{background:#2867d8}button[data-action="FINALIZE"]{background:#a83242}.clear-steps{grid-column:1/-1;background:#7f1d1d}.step-delete{margin-top:auto;padding:4px 7px;align-self:flex-end;background:#7f1d1d;font-size:11px}button:disabled{opacity:.38;filter:saturate(.3);cursor:default}.preview-head{display:flex;align-items:center;justify-content:space-between;margin:18px 0 8px;padding-top:14px;border-top:1px solid #29476f}.preview-head strong{font-size:12px}.step-scroll{min-height:0;overflow:auto;flex:1;padding-right:3px}.step-list{display:grid;gap:8px;padding:0;margin:0;list-style:none}.step-item{display:grid;grid-template-columns:92px 1fr;gap:9px;padding:7px;border:1px solid #29476f;border-radius:10px;background:#101f35;cursor:pointer}.step-item:hover,.step-item:focus-visible{border-color:#6fa2ed;background:#142946;outline:none}.thumb{width:92px;aspect-ratio:16/9;border-radius:6px;background:#1b365c;overflow:hidden}.thumb img{width:100%;height:100%;object-fit:cover}.step-detail{min-width:0;display:flex;flex-direction:column;gap:4px}.step-detail strong{font-size:11px;color:#9fc2ff}.step-detail span{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:3;font-size:11px}.step-empty{padding:22px 8px;text-align:center;color:#9fb0ca}.foot{display:flex;justify-content:flex-end;padding-top:10px}.panel{padding:5px;background:transparent;color:#9fc2ff}.viewer{position:fixed;inset:0;z-index:2147483647;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:32px;background:#02060ded;color:#fff;pointer-events:auto;font:13px/1.4 system-ui,-apple-system,Segoe UI,sans-serif}.viewer[hidden]{display:none}.viewer img{display:block;max-width:calc(100vw - 64px);max-height:calc(100vh - 110px);object-fit:contain;border-radius:8px;box-shadow:0 18px 60px #000}.viewer-title{max-width:900px;text-align:center}.viewer-close{position:absolute;top:18px;right:20px;width:42px;height:42px;border-radius:50%;font-size:24px;background:#172a48}@media(max-width:520px){.drawer{width:min(88vw,330px)}.viewer{padding:18px}.viewer img{max-width:calc(100vw - 36px)}}
+    </style><aside class="drawer" aria-label="Menu Homolog"><button class="toggle" aria-label="Fechar menu Homolog" title="Abrir ou fechar menu">›</button><div class="head"><span class="brand">🎬 Homolog</span><span class="state"></span><span class="count">0</span></div><div class="actions"><button data-action="START">Iniciar gravação</button><button data-action="PAUSE">Pausar</button><button data-action="RESUME">Continuar</button><button data-action="FINALIZE">Finalizar</button><button class="clear-steps">Limpar passos</button></div><div class="preview-head"><strong>Pré-visualização dos passos</strong><span class="preview-count">0</span></div><div class="step-scroll"><div class="step-empty">Nenhum passo registrado.</div><ol class="step-list"></ol></div><div class="foot"><button class="panel">Abrir painel ↗</button></div></aside><div class="viewer" role="dialog" aria-modal="true" aria-label="Visualização do passo" hidden><button class="viewer-close" aria-label="Fechar visualização">×</button><img alt=""><div class="viewer-title"></div></div>`;
+    const projectContext = document.createElement('div');
+    projectContext.className = 'project-context';
+    projectContext.style.cssText = 'display:grid;gap:7px;margin-top:14px;padding:11px;border:1px solid #29476f;border-radius:10px;background:#101f35';
+    projectContext.innerHTML = '<label style="display:grid;gap:3px;color:#9fc2ff;font-size:11px">Nome do projeto<input class="project-name" maxlength="200" style="padding:7px;border:1px solid #365577;border-radius:7px;background:#091426;color:#fff"></label><label style="display:grid;gap:3px;color:#9fc2ff;font-size:11px">Funcionalidade<input class="project-functionality" maxlength="300" style="padding:7px;border:1px solid #365577;border-radius:7px;background:#091426;color:#fff"></label><button class="save-project" type="button" style="background:#2867d8">Salvar dados</button><button class="new-project" type="button" style="background:#15804f" hidden>Novo projeto / funcionalidade</button>';
+    shadow.querySelector('.actions')?.before(projectContext);
+    const head = shadow.querySelector<HTMLElement>('.head');
+    if (head) head.style.cssText = 'position:relative;display:flex;align-items:center;justify-content:center;min-height:24px';
+    const brand = shadow.querySelector<HTMLElement>('.brand');
+    if (brand) brand.textContent = '📷 Homolog';
+    const stateLabel = shadow.querySelector<HTMLElement>('.state');
+    if (stateLabel) stateLabel.style.cssText = 'position:absolute;left:0;font-size:11px;color:#9fc2ff';
+    shadow.querySelector('.count')?.remove();
+    const panelButton = shadow.querySelector<HTMLButtonElement>('.panel');
+    if (panelButton && head) {
+      panelButton.style.cssText = 'width:100%;margin-top:10px;padding:8px;background:#152a47;color:#9fc2ff';
+      head.after(panelButton);
+    }
+    shadow.querySelector<HTMLButtonElement>('.save-project')?.addEventListener('click', () => void saveProjectContext());
+    shadow.querySelector<HTMLButtonElement>('.new-project')?.addEventListener('click', () => void createNewProjectContext());
     shadow.querySelectorAll<HTMLButtonElement>('[data-action]').forEach((button) => button.addEventListener('click', () => void controlAction(button.dataset.action as 'START'|'PAUSE'|'RESUME'|'FINALIZE')));
-    shadow.querySelector<HTMLButtonElement>('.panel')?.addEventListener('click', () => { const url=new URL('http://localhost:5173/');url.searchParams.set('homologExtensionId',chrome.runtime.id);window.open(url.toString(),'_blank','noopener'); });
+    shadow.querySelector<HTMLButtonElement>('.panel')?.addEventListener('click', requestPanelOpen);
     shadow.querySelector<HTMLButtonElement>('.toggle')?.addEventListener('click', () => void toggleRecordingControls());
+    shadow.querySelector<HTMLButtonElement>('.clear-steps')?.addEventListener('click', () => void clearControlSteps());
     const closeViewer = () => { const viewer=shadow.querySelector<HTMLElement>('.viewer');if(viewer)viewer.hidden=true; };
     shadow.querySelector<HTMLButtonElement>('.viewer-close')?.addEventListener('click', closeViewer);
     shadow.querySelector<HTMLElement>('.viewer')?.addEventListener('click', (event) => { if(event.target===event.currentTarget)closeViewer(); });
@@ -182,9 +332,14 @@ function renderRecordingControls(session: RecordingSession | null): void {
   const current=session?.state ?? 'idle';
   const labels={idle:'Pronto',recording:'Gravando',paused:'Pausado',finalized:'Finalizado'};
   const stateEl=root?.querySelector('.state');if(stateEl)stateEl.textContent=labels[current];
-  const count=root?.querySelector('.count');if(count)count.textContent=String(session?.stepCount??0);
   const previewCount=root?.querySelector('.preview-count');if(previewCount)previewCount.textContent=`${state.controlSteps.length} passos`;
-  root?.querySelectorAll<HTMLButtonElement>('[data-action]').forEach(button=>{const action=button.dataset.action;button.disabled=action==='START'?(current==='recording'||current==='paused'):action==='PAUSE'?current!=='recording':action==='RESUME'?current!=='paused':current!=='recording'&&current!=='paused';});
+  const projectName=root?.querySelector<HTMLInputElement>('.project-name');if(projectName&&root?.activeElement!==projectName)projectName.value=state.projectContext.name;
+  const functionality=root?.querySelector<HTMLInputElement>('.project-functionality');if(functionality&&root?.activeElement!==functionality)functionality.value=state.projectContext.functionality;
+  if(projectName)projectName.readOnly=state.projectContext.locked===true;
+  if(functionality)functionality.readOnly=state.projectContext.locked===true;
+  const saveProject=root?.querySelector<HTMLButtonElement>('.save-project');if(saveProject)saveProject.hidden=state.projectContext.locked===true;
+  const newProject=root?.querySelector<HTMLButtonElement>('.new-project');if(newProject)newProject.hidden=state.projectContext.locked!==true;
+  root?.querySelectorAll<HTMLButtonElement>('[data-action]').forEach(button=>{const action=button.dataset.action;button.hidden=action==='START'&&(current==='recording'||current==='paused');button.disabled=action==='START'?(current==='recording'||current==='paused'):action==='PAUSE'?current!=='recording':action==='RESUME'?current!=='paused':current!=='recording'&&current!=='paused';});
   renderStepPreviews();
 }
 
@@ -476,18 +631,6 @@ async function finalizeInteraction(id: string, interaction: InteractionEvent): P
     return;
   }
 
-  const now = Date.now();
-  if (now - state.lastCaptureStartedAt < MIN_INTERVAL_BETWEEN_CAPTURES_MS) {
-    logger.info(
-      `captura ignorada: intervalo ${now - state.lastCaptureStartedAt}ms < ${MIN_INTERVAL_BETWEEN_CAPTURES_MS}ms`,
-    );
-    // Um passo só pode existir quando houver screenshot correspondente.
-    // Não enviamos __RECORD_INTERACTION__, pois isso incrementava o contador
-    // sem produzir evidência visual.
-    return;
-  }
-  state.lastCaptureStartedAt = now;
-
   let markerRemoved = false;
   const removeMarkerSafe = () => {
     if (markerRemoved) return;
@@ -512,7 +655,6 @@ async function finalizeInteraction(id: string, interaction: InteractionEvent): P
       logger.warn('bg rejeitou screenshot / step', resp.error);
       return;
     }
-    state.dedup.recordFromInteraction(interaction);
   } catch (e) {
     logger.warn('erro ao enviar request screenshot', e);
   } finally {
@@ -544,7 +686,6 @@ function cancelPendingInteractions(): void {
   }
   pending.clear();
   clearAllMarkerTimeouts();
-  state.lastCaptureStartedAt = 0;
 }
 
 function onPageHideSoon(): void {
@@ -586,22 +727,6 @@ function onPointerDownCapture(evt: Event): void {
     }
 
     const stableSelector = buildStableSelector(el);
-    const accessibleName = targetInfo.accessibleName;
-
-    const dup = state.dedup.isDuplicate(
-      {
-        tagName: targetInfo.tagName,
-        selector: stableSelector,
-        point: viewportPoint,
-        accessibleName,
-      },
-      Date.now(),
-    );
-    if (dup.duplicate) {
-      logger.info('interacao dedup: ', dup.reason);
-      return;
-    }
-
     const interaction: InteractionEvent = {
       interactionId: uuidv4(),
       sessionId: state.sessionId,
@@ -645,8 +770,9 @@ function detachListener(): void {
 
 function applySessionState(s: RecordingSession | null): void {
   const wasRecording = state.recording;
+  const previousSessionState = state.session?.state;
   const baseRecording = s?.state === 'recording';
-  if (!wasRecording && baseRecording) state.controlsExpanded = false;
+  // Iniciar a gravação não recolhe o menu e não interfere no listener.
   state.sessionId = s?.sessionId ?? null;
   state.session = s;
   if (baseRecording && s?.tabId !== null && s?.tabId !== undefined && state.ownTabId !== null) {
@@ -667,7 +793,6 @@ function applySessionState(s: RecordingSession | null): void {
     state.recording = baseRecording && !state.restricted;
   }
   if (!wasRecording && state.recording) {
-    state.dedup.clear();
     attachListener();
   } else if (wasRecording && !state.recording) {
     detachListener();
@@ -689,6 +814,13 @@ function applySessionState(s: RecordingSession | null): void {
   }
   renderRecordingControls(s);
   if ((s?.stepCount ?? 0) !== state.controlSteps.length) void refreshControlSteps();
+  if (
+    state.pendingPanelOpen &&
+    (previousSessionState === 'recording' || previousSessionState === 'paused') &&
+    s?.state === 'finalized'
+  ) {
+    state.pendingPanelOpen = false;
+  }
 }
 
 async function resolveOwnTabId(): Promise<void> {
@@ -722,6 +854,10 @@ function initStorageListener(): void {
   try {
     chrome.storage.onChanged.addListener((changes, areaName) => {
       if (areaName !== 'local') return;
+      // Outros dados (passos, screenshots e última interação) também são
+      // salvos em chrome.storage.local. Eles não significam que a gravação foi
+      // removida e não podem desligar o detector após o primeiro clique.
+      if (!hasOwnStorageChange(changes, STORAGE_KEY_RECORDING)) return;
       const raw = changes[STORAGE_KEY_RECORDING]?.newValue;
       if (raw && typeof raw === 'object') {
         applySessionState(raw as RecordingSession);
@@ -776,6 +912,7 @@ function init(): void {
       if (restriction) renderBanner(restriction);
       await resolveOwnTabId();
       await fetchInitialState();
+      await loadProjectContext();
       initStorageListener();
       initRuntimeListener();
       initPageHideGuard();
@@ -791,7 +928,9 @@ function init(): void {
 // O manifest já injeta este script. Chamadas programáticas adicionais são
 // permitidas apenas como fallback; este marcador impede dois listeners na
 // mesma página e, consequentemente, dois passos para um único clique.
-if (!document.documentElement.hasAttribute(CONTENT_INSTANCE_ATTRIBUTE)) {
+const contentGlobal = globalThis as typeof globalThis & Record<string, unknown>;
+if (contentGlobal[CONTENT_INSTANCE_GLOBAL] !== true) {
+  contentGlobal[CONTENT_INSTANCE_GLOBAL] = true;
   document.documentElement.setAttribute(CONTENT_INSTANCE_ATTRIBUTE, chrome.runtime.id);
   init();
 } else {

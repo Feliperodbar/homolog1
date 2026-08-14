@@ -3,10 +3,14 @@ import { clearAllIndexedDbStores, seedProjectWithSessions } from '../_idbTestHel
 import {
   deleteProjectCascade,
   deleteSessionCascade,
+  deleteStepCascade,
+  clearSessionSteps,
+  createProject,
   listProjects,
   listSessionsByProject,
   listStepsBySession,
   getScreenshotById,
+  moveSessionEvidenceToProject,
 } from '../../extension/src/shared/storage/repository';
 
 describe('storage exclusão segura / cascata controlada', () => {
@@ -39,6 +43,43 @@ describe('storage exclusão segura / cascata controlada', () => {
   it('deleteSessionCascade idempotente: sessão inexistente = 0', async () => {
     const del = await deleteSessionCascade('sessao-que-nao-existe');
     expect(del).toEqual({ deletedSession: false, deletedSteps: 0, deletedScreenshots: 0 });
+  });
+
+  it('deleteStepCascade exclui somente o passo escolhido e sua imagem', async () => {
+    const { sessions } = await seedProjectWithSessions({ nSessions: 1, nSteps: 3 });
+    const before = await listStepsBySession(sessions[0].sessionId);
+    const target = before[1];
+    await deleteStepCascade(target.stepId);
+    const after = await listStepsBySession(sessions[0].sessionId);
+    expect(after.map((step) => step.stepId)).toEqual([before[0].stepId, before[2].stepId]);
+    if (target.screenshotId) expect(await getScreenshotById(target.screenshotId)).toBe(null);
+  });
+
+  it('clearSessionSteps remove todos os passos sem excluir a sessão', async () => {
+    const { project, sessions } = await seedProjectWithSessions({ nSessions: 1, nSteps: 3 });
+    expect(await clearSessionSteps(sessions[0].sessionId)).toBe(3);
+    expect(await listStepsBySession(sessions[0].sessionId)).toHaveLength(0);
+    expect(await listSessionsByProject(project.projectId)).toHaveLength(1);
+  });
+
+  it('moveSessionEvidenceToProject preserva passos e imagens ao trocar o projeto ativo', async () => {
+    const { sessions } = await seedProjectWithSessions({ nSessions: 1, nSteps: 3 });
+    const target = await createProject({ name: 'Projeto selecionado no menu lateral' });
+    const before = await listStepsBySession(sessions[0].sessionId);
+
+    const result = await moveSessionEvidenceToProject(sessions[0].sessionId, target.projectId);
+    const after = await listStepsBySession(sessions[0].sessionId);
+
+    expect(before).toHaveLength(3);
+    expect(result).toEqual({ steps: 3, screenshots: 3 });
+    expect(after.map((step) => step.sequence)).toEqual([1, 2, 3]);
+    expect(after.every((step) => step.projectId === target.projectId)).toBe(true);
+    for (const step of after) {
+      expect(step.screenshotId).toBeTruthy();
+      const screenshot = await getScreenshotById(step.screenshotId as string);
+      expect(screenshot?.projectId).toBe(target.projectId);
+      expect(screenshot?.image.size).toBeGreaterThan(0);
+    }
   });
 
   it('deleteProjectCascade: exclui TUDO (projeto+sessions+steps+shots)', async () => {

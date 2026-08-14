@@ -62,6 +62,22 @@ interface ExtensionBackup {
   screenshotsMeta: Array<Record<string, any>>;
 }
 
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  try {
+    const nativeBlob = await (await fetch(dataUrl)).blob();
+    if (nativeBlob.size > 0) return nativeBlob;
+  } catch {
+    // Conversão manual abaixo atende navegadores que rejeitam fetch(data:).
+  }
+  const match = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(dataUrl);
+  if (!match) throw new Error('Screenshot recebida em formato inválido.');
+  const mime = match[1] || 'application/octet-stream';
+  const binary = match[2] ? atob(match[3]) : decodeURIComponent(match[3]);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return new Blob([bytes], { type: mime });
+}
+
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 type Listener = (state: SaveState, error?: string) => void;
 
@@ -289,8 +305,8 @@ export async function importExtensionSnapshot(data: unknown): Promise<{ projects
     const metadata = (source.metadata ?? {}) as Record<string, any>;
     const existing = existingProjects.get(String(source.projectId));
     await saveProject({
-      id: String(source.projectId), name: existing?.name ?? String(source.name || 'Projeto Homolog'),
-      feature: existing?.feature ?? String(metadata.feature ?? ''), environment: existing?.environment ?? String(metadata.environment ?? ''),
+      id: String(source.projectId), name: String(source.name || existing?.name || 'Projeto Homolog'),
+      feature: String(metadata.feature ?? existing?.feature ?? ''), environment: 'Web',
       version: existing?.version ?? String(metadata.version ?? ''), responsible: existing?.responsible ?? String(metadata.responsible ?? ''),
       date: existing?.date ?? String(metadata.date ?? new Date(source.createdAt ?? Date.now()).toISOString().slice(0, 10)),
       browser: existing?.browser ?? String(metadata.browser ?? navigator.userAgent), expectedResult: existing?.expectedResult ?? String(metadata.expectedResult ?? ''),
@@ -324,7 +340,9 @@ export async function importExtensionSnapshot(data: unknown): Promise<{ projects
     };
     if(existing){step.title=existing.title;step.description=existing.description;step.expectedResult=existing.expectedResult;step.actualResult=existing.actualResult;step.status=existing.status;step.sensitive=existing.sensitive;}
     const imageExists = screenshotId ? await getScreenshot(screenshotId) : null;
-    const image = !imageExists && shot?.imageDataUrl ? await (await fetch(String(shot.imageDataUrl))).blob() : undefined;
+    const image = (!imageExists || imageExists.size === 0) && shot?.imageDataUrl
+      ? await dataUrlToBlob(String(shot.imageDataUrl))
+      : undefined;
     await saveStep(step, image);
   }
   return { projects: backup.projects.length, sessions: backup.sessions.length, steps: backup.steps.length };

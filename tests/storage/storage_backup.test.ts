@@ -38,6 +38,15 @@ describe('storage exportação / importação backup local', () => {
     }
   });
 
+  it('exportBackup leve preserva referencias sem transportar imagens na mesma mensagem', async () => {
+    await seedProjectWithSessions({ nSessions: 1, nSteps: 3 });
+    const backup = await exportBackup({ includeScreenshots: false });
+    expect(backup.steps).toHaveLength(3);
+    expect(backup.screenshotsMeta).toHaveLength(3);
+    expect(backup.screenshotsMeta.every((meta) => !meta.imageDataUrl)).toBe(true);
+    expect(backup.screenshotsMeta.every((meta) => meta.sizeBytes > 0)).toBe(true);
+  });
+
   it('importBackup com onConflict=renameProject evita substituir existente', async () => {
     const { project } = await seedProjectWithSessions({ nSessions: 1, nSteps: 1 });
     const backup = await exportBackup() as HomologBackupV1;

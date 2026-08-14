@@ -1,6 +1,8 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { deleteProjectCascade, getScreenshot, importExtensionSnapshot, listProjects, listSessions, listSteps, newId, openEvidenceDb, saveProject, saveSession, saveStep, type EvidenceProject, type EvidenceSession, type EvidenceStep } from '../web/src/core/modules/evidenceStore';
+import { addStepWithScreenshot, createProject as createExtensionProject, createSession as createExtensionSession, exportBackup as exportExtensionBackup } from '../extension/src/shared/storage/repository';
+import { makeRecordingStep } from './_idbTestHelper';
 
 beforeEach(async()=>{const db=await openEvidenceDb();for(const name of ['projects','sessions','steps','screenshots','settings'])await new Promise<void>((resolve,reject)=>{const tx=db.transaction(name,'readwrite');tx.objectStore(name).clear();tx.oncomplete=()=>resolve();tx.onerror=()=>reject(tx.error);});localStorage.clear();});
 function records(){const now=Date.now();const project:EvidenceProject={id:newId(),name:'QA',feature:'Login',environment:'HML',version:'1',responsible:'Felipe',date:'2026-08-13',browser:'Chrome',expectedResult:'OK',overallResult:'',createdAt:now,updatedAt:now};const session:EvidenceSession={id:newId(),projectId:project.id,name:'Sessão',state:'recording',createdAt:now,updatedAt:now};const step:EvidenceStep={id:newId(),sessionId:session.id,projectId:project.id,sequence:1,title:'Entrar',action:'Clicar',element:'button',description:'Clicar no botão “Entrar”.',expectedResult:'OK',actualResult:'',status:'not-run',url:'https://example.com',timestamp:now,screenshotId:newId()};return{project,session,step};}
@@ -12,5 +14,20 @@ describe('IndexedDB do painel',()=>{
   const now=Date.now();
   const result=await importExtensionSnapshot({schema:'homolog-backup',schemaVersion:1,projects:[{projectId:'p1',name:'Gravação',createdAt:now,updatedAt:now}],sessions:[{sessionId:'s1',projectId:'p1',name:'Sessão gravada',state:'recording',createdAt:now,updatedAt:now}],steps:[{stepId:'st1',sessionId:'s1',projectId:'p1',sequence:1,actionType:'click',target:{tagName:'BUTTON',visibleText:'Entrar'},description:'Clicar no botão “Entrar”.',url:'https://example.com',timestamp:now,viewportPoint:{x:10,y:20}}],screenshotsMeta:[{screenshotId:'shot1',stepId:'st1',sessionId:'s1',projectId:'p1',imageDataUrl:'data:image/png;base64,aW1hZ2U='}]});
   expect(result.steps).toBe(1);expect((await listProjects())[0].name).toBe('Gravação');expect((await listSessions('p1'))[0].id).toBe('s1');const step=(await listSteps('s1'))[0];expect(step.element).toBe('Entrar');expect((await getScreenshot(step.screenshotId))?.type).toBe('image/png');
+ });
+ it('transfere uma captura real do IndexedDB da extensao para o IndexedDB do painel',async()=>{
+  const sourceProject=await createExtensionProject({name:'Fluxo completo'});
+  const sourceSession=await createExtensionSession({projectId:sourceProject.projectId,name:'Sessao finalizada'});
+  const sourceStep=makeRecordingStep({sessionId:sourceSession.sessionId,sequence:1,interactionId:newId(),description:'Clicar no botao Entrar.',url:'https://example.com'});
+  await addStepWithScreenshot(sourceProject.projectId,sourceSession.sessionId,sourceStep,null);
+  const backup=await exportExtensionBackup({projectIds:[sourceProject.projectId],includeScreenshots:true});
+  expect(backup.steps).toHaveLength(1);
+  expect(backup.screenshotsMeta[0]?.imageDataUrl).toMatch(/^data:image\/jpeg;base64,/);
+  await importExtensionSnapshot(backup);
+  const imported=(await listSteps(sourceSession.sessionId))[0];
+  expect(imported?.screenshotId).toBeTruthy();
+  const image=await getScreenshot(imported.screenshotId);
+  expect(image?.type).toBe('image/jpeg');
+  expect(image?.size).toBeGreaterThan(0);
  });
 });

@@ -113,6 +113,12 @@ export type RuntimeMessageType =
   | '__GET_LAST_INTERACTION__'
   | '__GET_LAST_STEP__'
   | '__LIST_STEPS__'
+  | '__DELETE_STEP__'
+  | '__CLEAR_STEPS__'
+  | '__GET_PROJECT_CONTEXT__'
+  | '__SAVE_PROJECT_CONTEXT__'
+  | '__NEW_PROJECT_CONTEXT__'
+  | '__OPEN_PANEL_BACKGROUND__'
   | '__GET_MY_TAB_ID__'
   | '__INTERACTION_RECORDED__';
 
@@ -128,5 +134,6 @@ export interface RuntimeResponse {
   lastStep?: RecordingStep;
   steps?: Array<RecordingStep>;
   tabId?: number;
+  projectContext?: { name: string; functionality: string; locked?: boolean };
   error?: string;
 }

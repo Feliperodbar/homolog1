@@ -41,6 +41,13 @@ import {
   getSessionById,
   getSetting,
   exportBackup,
+  deleteStepCascade,
+  clearSessionSteps,
+  getProjectById,
+  updateProject,
+  moveSessionEvidenceToProject,
+  listStepsBySession,
+  getScreenshotById,
 } from '../shared/storage/repository';
 import type { HomologSession } from '../shared/storage/types';
 
@@ -53,6 +60,22 @@ const logger = {
 // Evita duas chamadas simultâneas a captureVisibleTab e garante sequência
 // determinística quando interações chegam quase juntas.
 let screenshotQueue: Promise<void> = Promise.resolve();
+let lastCaptureStartedAt = 0;
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
+}
+
+async function screenshotAsDataUrl(screenshotId: string): Promise<string | null> {
+  const screenshot = await getScreenshotById(screenshotId);
+  if (!screenshot?.image.size) return null;
+  const bytes = new Uint8Array(await screenshot.image.arrayBuffer());
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return `data:${screenshot.image.type || screenshot.format};base64,${btoa(binary)}`;
+}
 
 function enqueueScreenshot<T>(operation: () => Promise<T>): Promise<T> {
   const result = screenshotQueue.then(operation, operation);
@@ -334,8 +357,8 @@ async function getOrCreateActiveProjectId(): Promise<string> {
       const stored = await chrome.storage.local.get(STORAGE_KEY_ACTIVE_PROJECT_ID);
       const existing = stored?.[STORAGE_KEY_ACTIVE_PROJECT_ID];
       if (typeof existing === 'string' && existing.length > 0) {
-        const list = await listProjects({ includeArchived: true, limit: 1 });
-        if (list.some((p) => p.projectId === existing)) return existing;
+        const project = await getProjectById(existing);
+        if (project) return existing;
       }
     }
     const list = await listProjects({ includeArchived: false, limit: 1 });
@@ -377,6 +400,30 @@ async function persistRecordingSessionOnIdb(
     logger.warn('persistRecordingSessionOnIdb ignorou erro:', e instanceof Error ? e.message : String(e));
     return null;
   }
+}
+
+async function reconcileSessionEvidence(
+  session: RecordingSession,
+  projectId: string,
+): Promise<number> {
+  const recoverySteps = await loadSteps(session.sessionId);
+  if (recoverySteps.length === 0) return 0;
+  const persistedSteps = await listStepsBySession(session.sessionId);
+  const persistedById = new Map(persistedSteps.map((step) => [step.stepId, step]));
+  let repaired = 0;
+  for (const step of recoverySteps) {
+    const persisted = persistedById.get(step.stepId);
+    const screenshot = persisted?.screenshotId
+      ? await getScreenshotById(persisted.screenshotId)
+      : null;
+    if (persisted && screenshot?.image.size) continue;
+    await addStepWithScreenshot(projectId, session.sessionId, step, null);
+    repaired += 1;
+  }
+  if (repaired > 0) {
+    logger.info(`reconcileSessionEvidence: ${repaired} passo(s) recuperado(s)`);
+  }
+  return repaired;
 }
 
 async function onStart(): Promise<RuntimeResponse> {
@@ -425,16 +472,37 @@ async function onStart(): Promise<RuntimeResponse> {
 }
 
 async function onSimpleTransition(t: 'PAUSE' | 'RESUME' | 'FINALIZE' | 'INCREMENT_STEP') {
+  if (t === 'FINALIZE') {
+    // Não finalize enquanto cliques aceitos ainda aguardam captura/persistência.
+    await screenshotQueue;
+  }
   const current = await loadSession();
   const r = applyTransition(current, t);
   if (!r.changed) {
     return { ok: false, state: r.session, error: r.reason } as RuntimeResponse;
   }
-  await saveSession(r.session);
   if (t !== 'INCREMENT_STEP') {
-    void persistRecordingSessionOnIdb(r.session);
+    // A finalização só é anunciada depois que a sessão estiver integralmente
+    // persistida; assim o painel nunca abre durante uma gravação ainda pendente.
+    if (t === 'FINALIZE') {
+      const activeProjectId = await getOrCreateActiveProjectId();
+      await persistRecordingSessionOnIdb(r.session, { projectId: activeProjectId });
+      await reconcileSessionEvidence(r.session, activeProjectId);
+      await moveSessionEvidenceToProject(r.session.sessionId, activeProjectId);
+      await persistRecordingSessionOnIdb(r.session, { projectId: activeProjectId });
+    } else {
+      await persistRecordingSessionOnIdb(r.session);
+    }
   }
+  await saveSession(r.session);
   await broadcastState(r.session);
+  if (t === 'FINALIZE') {
+    try {
+      await openPanelTab(true);
+    } catch (error) {
+      logger.warn('gravação finalizada, mas o painel não pôde ser aberto', error);
+    }
+  }
   return { ok: true, state: r.session } as RuntimeResponse;
 }
 
@@ -511,7 +579,23 @@ async function captureTabDataUrl(
     quality: Math.max(1, Math.min(100, Math.round(SCREENSHOT.QUALITY * 100))),
   };
   try {
-    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, captureOptions);
+    const remaining =
+      SCREENSHOT.MIN_INTERVAL_BETWEEN_CAPTURES_MS - (Date.now() - lastCaptureStartedAt);
+    if (remaining > 0) await wait(remaining);
+    lastCaptureStartedAt = Date.now();
+    let dataUrl = '';
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, captureOptions);
+        lastError = null;
+        break;
+      } catch (error) {
+        lastError = error;
+        if (attempt < 2) await wait(SCREENSHOT.MIN_INTERVAL_BETWEEN_CAPTURES_MS);
+      }
+    }
+    if (lastError) throw lastError;
     if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/')) {
       throw new Error('o navegador retornou uma captura invalida');
     }
@@ -571,21 +655,6 @@ function isDuplicateInteractionStep(
   return false;
 }
 
-function isDuplicatePhysicalClick(
-  steps: Array<RecordingStep>,
-  interaction: InteractionEvent,
-  windowMs = 80,
-): boolean {
-  const previous = steps.at(-1);
-  if (!previous) return false;
-  return (
-    Math.abs(interaction.timestamp - previous.timestamp) <= windowMs &&
-    interaction.stableSelector === previous.stableSelector &&
-    Math.abs(interaction.viewportPoint.x - previous.viewportPoint.x) <= 2 &&
-    Math.abs(interaction.viewportPoint.y - previous.viewportPoint.y) <= 2
-  );
-}
-
 async function onRequestScreenshot(
   payload: Record<string, unknown> | undefined,
   sender: chrome.runtime.MessageSender | undefined,
@@ -615,10 +684,7 @@ async function onRequestScreenshot(
   }
 
   const priorSteps = await loadSteps(session.sessionId);
-  if (
-    isDuplicateInteractionStep(priorSteps, ev.interactionId, 1500, Date.now()) ||
-    isDuplicatePhysicalClick(priorSteps, ev)
-  ) {
+  if (isDuplicateInteractionStep(priorSteps, ev.interactionId, 1500, Date.now())) {
     return { ok: false, error: 'step duplicado para mesma interacao; ignorado' };
   }
 
@@ -704,6 +770,126 @@ async function onRequestScreenshot(
   await broadcastStepRecorded(stepValid.value, finalSession);
 
   return { ok: true, state: finalSession, lastStep: stepValid.value, lastInteraction: ev };
+}
+
+async function onDeleteStep(payload: Record<string, unknown> | undefined): Promise<RuntimeResponse> {
+  const stepId = typeof payload?.stepId === 'string' ? payload.stepId : '';
+  if (!stepId || stepId.length > 128) return { ok: false, error: 'passo inválido' };
+  const session = await loadSession();
+  const steps = await loadSteps(session.sessionId);
+  if (!steps.some((step) => step.stepId === stepId)) {
+    return { ok: false, state: session, error: 'passo não encontrado' };
+  }
+  const remaining = steps
+    .filter((step) => step.stepId !== stepId)
+    .map((step, index) => ({ ...step, sequence: index + 1 }));
+  await deleteStepCascade(stepId);
+  await saveSteps(remaining);
+  await saveLastStep(remaining.at(-1) ?? null);
+  const updated = { ...session, stepCount: remaining.length, lastUpdatedAt: Date.now() };
+  await saveSession(updated);
+  await upsertSessionFromRecordingSession(await getOrCreateActiveProjectId(), updated);
+  await broadcastState(updated);
+  return { ok: true, state: updated, steps: remaining };
+}
+
+async function onClearSteps(): Promise<RuntimeResponse> {
+  const session = await loadSession();
+  await clearSessionSteps(session.sessionId);
+  await chrome.storage.local.remove([
+    STORAGE_KEY_STEPS,
+    STORAGE_KEY_LAST_STEP,
+    STORAGE_KEY_LAST_INTERACTION,
+  ]);
+  const updated = { ...session, stepCount: 0, lastUpdatedAt: Date.now() };
+  await saveSession(updated);
+  await upsertSessionFromRecordingSession(await getOrCreateActiveProjectId(), updated);
+  await broadcastState(updated);
+  return { ok: true, state: updated, steps: [] };
+}
+
+async function onGetProjectContext(): Promise<RuntimeResponse> {
+  const project = await getProjectById(await getOrCreateActiveProjectId());
+  return {
+    ok: true,
+    projectContext: {
+      name: project?.name ?? 'Projeto padrão',
+      functionality: String(project?.metadata?.feature ?? ''),
+      locked: project?.metadata?.contextLocked === true,
+    },
+  };
+}
+
+async function onSaveProjectContext(
+  payload: Record<string, unknown> | undefined,
+): Promise<RuntimeResponse> {
+  const name = typeof payload?.name === 'string' ? payload.name.trim().slice(0, 200) : '';
+  const functionality =
+    typeof payload?.functionality === 'string' ? payload.functionality.trim().slice(0, 300) : '';
+  if (!name) return { ok: false, error: 'Informe o nome do projeto.' };
+  const projectId = await getOrCreateActiveProjectId();
+  const current = await getProjectById(projectId);
+  const updated = await updateProject(projectId, {
+    name,
+    metadata: {
+      ...(current?.metadata ?? {}),
+      feature: functionality,
+      environment: 'Web',
+      contextLocked: true,
+    },
+  });
+  return {
+    ok: true,
+    projectContext: { name: updated.name, functionality, locked: true },
+  };
+}
+
+async function onNewProjectContext(): Promise<RuntimeResponse> {
+  const current = await loadSession();
+  let archived = current;
+  if (current.state === 'recording' || current.state === 'paused') {
+    const finalized = applyTransition(current, 'FINALIZE');
+    archived = finalized.session;
+    await saveSession(archived);
+    await persistRecordingSessionOnIdb(archived);
+  }
+
+  const project = await createProject({
+    name: 'Novo projeto',
+    description: 'Criado pelo menu lateral do Homolog',
+    metadata: { feature: '', environment: 'Web', contextLocked: false },
+  });
+  await chrome.storage.local.set({ [STORAGE_KEY_ACTIVE_PROJECT_ID]: project.projectId });
+  const nextSession = createNewSession(current.tabId);
+  await clearStepsForNewSession();
+  await saveLastInteraction(null);
+  await saveSession(nextSession);
+  await upsertSessionFromRecordingSession(project.projectId, nextSession);
+  await broadcastState(nextSession);
+  const panelUrl = new URL('http://localhost:5173/');
+  panelUrl.searchParams.set('homologExtensionId', chrome.runtime.id);
+  try {
+    await chrome.tabs.create({ url: panelUrl.toString(), active: false });
+  } catch (error) {
+    logger.warn('não foi possível abrir o painel em segundo plano', error);
+  }
+  return {
+    ok: true,
+    state: nextSession,
+    steps: [],
+    projectContext: { name: project.name, functionality: '', locked: false },
+  };
+}
+
+async function onOpenPanelBackground(): Promise<RuntimeResponse> {
+  await openPanelTab(false);
+  return { ok: true };
+}
+
+async function openPanelTab(active: boolean): Promise<void> {
+  const panelUrl = new URL('http://localhost:5173/');
+  panelUrl.searchParams.set('homologExtensionId', chrome.runtime.id);
+  await chrome.tabs.create({ url: panelUrl.toString(), active });
 }
 
 async function onRecordInteraction(
@@ -800,6 +986,18 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onInstalle
           return onGetLastStep();
         case '__LIST_STEPS__':
           return onListSteps();
+        case '__DELETE_STEP__':
+          return onDeleteStep(message.payload);
+        case '__CLEAR_STEPS__':
+          return onClearSteps();
+        case '__GET_PROJECT_CONTEXT__':
+          return onGetProjectContext();
+        case '__SAVE_PROJECT_CONTEXT__':
+          return onSaveProjectContext(message.payload);
+        case '__NEW_PROJECT_CONTEXT__':
+          return onNewProjectContext();
+        case '__OPEN_PANEL_BACKGROUND__':
+          return onOpenPanelBackground();
         case '__GET_MY_TAB_ID__':
           return onGetMyTabId(sender);
         case 'START':
@@ -836,12 +1034,49 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onInstalle
   chrome.runtime.onMessageExternal.addListener((message, sender, sendResponse) => {
     const senderUrl = sender.url ?? '';
     const allowed = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\//i.test(senderUrl);
-    if (!allowed || message?.type !== 'HOMOLOG_PANEL_SYNC') {
+    const supported = message?.type === 'HOMOLOG_PANEL_SYNC' ||
+      message?.type === 'HOMOLOG_PANEL_SCREENSHOT';
+    if (!allowed || !supported) {
       sendResponse({ ok: false, error: 'Solicitação externa não autorizada.' });
       return false;
     }
-    exportBackup({ includeScreenshots: true })
-      .then((backup) => sendResponse({ ok: true, backup }))
+    if (message.type === 'HOMOLOG_PANEL_SCREENSHOT') {
+      const screenshotId = typeof message.screenshotId === 'string' ? message.screenshotId : '';
+      if (!screenshotId || screenshotId.length > 128) {
+        sendResponse({ ok: false, error: 'Identificador de captura invalido.' });
+        return false;
+      }
+      screenshotAsDataUrl(screenshotId)
+        .then((imageDataUrl) => sendResponse({ ok: !!imageDataUrl, screenshotId, imageDataUrl }))
+        .catch((error) => sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : 'Falha ao ler captura.',
+        }));
+      return true;
+    }
+    (async () => {
+      // Tambem recupera gravacoes finalizadas por uma versao anterior: a copia
+      // do menu lateral contem o passo completo, inclusive a imagem capturada.
+      const session = await loadSession();
+      if (session.state !== 'idle') {
+        const projectId = await getOrCreateActiveProjectId();
+        await persistRecordingSessionOnIdb(session, { projectId });
+        await reconcileSessionEvidence(session, projectId);
+        await moveSessionEvidenceToProject(session.sessionId, projectId);
+      }
+      return Promise.all([
+        exportBackup({ includeScreenshots: false }),
+        chrome.storage.local.get([STORAGE_KEY_ACTIVE_PROJECT_ID, STORAGE_KEY_ACTIVE_SESSION_ID]),
+      ]);
+    })()
+      .then(([backup, active]) =>
+        sendResponse({
+          ok: true,
+          backup,
+          activeProjectId: active?.[STORAGE_KEY_ACTIVE_PROJECT_ID],
+          activeSessionId: active?.[STORAGE_KEY_ACTIVE_SESSION_ID],
+        }),
+      )
       .catch((error) =>
         sendResponse({
           ok: false,

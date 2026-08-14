@@ -96,6 +96,18 @@ describe('deduplicação de passos', () => {
     const agora = s2.timestamp + 1;
     expect(isDuplicateInteractionStep([s1], s2.interactionId, 1500, agora)).toBe(false);
   });
+
+  it('clique duplo no mesmo ponto mantém as duas interações', () => {
+    const primeiro = buildStep(1);
+    const segundo = interaction(2);
+    segundo.timestamp = primeiro.timestamp + 40;
+    segundo.stableSelector = primeiro.stableSelector;
+    segundo.viewportPoint = { ...primeiro.viewportPoint };
+
+    expect(
+      isDuplicateInteractionStep([primeiro], segundo.interactionId, 1500, segundo.timestamp),
+    ).toBe(false);
+  });
 });
 
 describe('validação de aba (associação sender vs sessão)', () => {
